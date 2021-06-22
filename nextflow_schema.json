@@ -245,7 +245,6 @@
                 },
                 "merge_facet_vars": {
                     "type": "string",
-                    "default": "NULL"
                 },
                 "merge_outlier_vars": {
                     "type": "string",
@@ -331,7 +330,6 @@
                 },
                 "integ_ref_dataset": {
                     "type": "string",
-                    "default": "NULL"
                 },
                 "integ_min_cells": {
                     "type": "integer",
@@ -351,7 +349,6 @@
                 },
                 "integ_dims_use": {
                     "type": "string",
-                    "default": "NULL"
                 },
                 "integ_dist_use": {
                     "type": "string",
@@ -614,7 +611,6 @@
                 },
                 "dge_random_effects_var": {
                     "type": "string",
-                    "default": "NULL"
                 },
                 "dge_fc_threshold": {
                     "type": "number",
@@ -638,7 +634,6 @@
             "properties": {
                 "ipa_reference_file": {
                     "type": "string",
-                    "default": "NULL"
                 },
                 "ipa_enrichment_tool": {
                     "type": "string",
