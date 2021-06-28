@@ -244,8 +244,7 @@
                     "default": "total_features_by_counts,total_counts,pc_mito,pc_ribo"
                 },
                 "merge_facet_vars": {
-                    "type": "string",
-                    "default": "NULL"
+                    "type": "string"
                 },
                 "merge_outlier_vars": {
                     "type": "string",
@@ -330,8 +329,7 @@
                     "default": 0.2
                 },
                 "integ_ref_dataset": {
-                    "type": "string",
-                    "default": "NULL"
+                    "type": "string"
                 },
                 "integ_min_cells": {
                     "type": "integer",
@@ -350,8 +348,7 @@
                     "default": 1
                 },
                 "integ_dims_use": {
-                    "type": "string",
-                    "default": "NULL"
+                    "type": "string"
                 },
                 "integ_dist_use": {
                     "type": "string",
@@ -613,8 +610,7 @@
                     "default": "cngeneson,seqdate,pc_mito"
                 },
                 "dge_random_effects_var": {
-                    "type": "string",
-                    "default": "NULL"
+                    "type": "string"
                 },
                 "dge_fc_threshold": {
                     "type": "number",
@@ -637,8 +633,7 @@
             "default": "",
             "properties": {
                 "ipa_reference_file": {
-                    "type": "string",
-                    "default": "NULL"
+                    "type": "string"
                 },
                 "ipa_enrichment_tool": {
                     "type": "string",
