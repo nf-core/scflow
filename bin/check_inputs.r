@@ -46,7 +46,13 @@ samplesheet <- read.delim(args$samplesheet)
 manifest <- read.delim(args$manifest)
 
 # check manifest paths exist
-dir_exists <- purrr::pmap_lgl(manifest, ~ dir.exists(as.character(..2)))
+
+check_exists <- function(filepath) {
+  RCurl::url.exists(filepath) | dir.exists(filepath)
+}
+
+dir_exists <- purrr::pmap_lgl(manifest, ~ check_exists(as.character(..2)))
+
 if(!all(dir_exists)){
   cat("The following paths were not found: -\n")
   print(manifest[!dir_exists,])
@@ -73,7 +79,7 @@ cat("Checks passed!\n")
 
 # write the same manifest back out
 write.table(manifest, 
-            "checked_manifest.txt", 
+            "checked_input.txt", 
             sep = "\t",
             quote = FALSE,
             col.names = TRUE, 

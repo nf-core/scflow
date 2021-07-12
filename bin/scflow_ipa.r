@@ -32,14 +32,6 @@ required$add_argument(
 )
 
 required$add_argument(
-  "--reference_file",
-  help = "full path to the reference gene file",
-  metavar = ".tsv",
-  required = TRUE,
-  default = "NULL"
-)
-
-required$add_argument(
   "--enrichment_tool",
   help = "one or more enrichment tools",
   metavar = "WebGestaltR",
@@ -61,22 +53,6 @@ required$add_argument(
   metavar = "GO_Biological_Process,GO_Cellular_Component,GO_Molecular_Function",
   required = TRUE,
   default = "KEGG"
-)
-
-required$add_argument(
-  "--is_output",
-  help = "Whether to return output in a directory",
-  metavar = "logical",
-  required = TRUE,
-  default = "TRUE"
-)
-
-required$add_argument(
-  "--output_dir",
-  help = "full path to the dir",
-  metavar = "current dir",
-  required = TRUE,
-  default = "./"
 )
 
 
@@ -108,8 +84,11 @@ args <- purrr::map(args, function(x) {
 ##  ............................................................................
 ##  Start impacted pathway analysis(IPA)                                    ####
 
-output_dir <- file.path(args$output_dir, "ipa")
+output_dir <- file.path(getwd(), "ipa")
+report_dir <- file.path(getwd(), "ipa_report")
+
 dir.create(output_dir)
+dir.create(report_dir)
 
 for (gene_file in args$gene_file) {
 
@@ -118,7 +97,7 @@ for (gene_file in args$gene_file) {
     enrichment_tool = args$enrichment_tool,
     enrichment_method = args$enrichment_method,
     enrichment_database = args$enrichment_database,
-    is_output = args$is_output,
+    is_output = TRUE,
     output_dir = output_dir
   )
 
@@ -127,7 +106,7 @@ for (gene_file in args$gene_file) {
   
   report_impacted_pathway(
       res = enrichment_result,
-      report_folder_path = output_dir,
+      report_folder_path = report_dir,
       report_file = report_fp
     )
 

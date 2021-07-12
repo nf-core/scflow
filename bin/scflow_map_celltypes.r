@@ -53,10 +53,41 @@ required$add_argument(
   required = TRUE
 )
 
+required$add_argument(
+  "--species",
+  help = "the biological species (e.g. mouse, human)",
+  default = "human",
+  required = TRUE
+  )
+
+required$add_argument(   
+"--reddimplot_pointsize",
+default = 0.1,
+type = "double", 
+required = TRUE,
+help = "Point size for reduced dimension plots",
+metavar = "N"
+)
+
+required$add_argument(   
+"--reddimplot_alpha",
+default = 0.2,
+type = "double", 
+required = TRUE,
+help = "Alpha value for reduced dimension plots",
+metavar = "N"
+)
+
+
+
 ### . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ..
 ### Pre-process args                                                        ####
 
 args <- parser$parse_args()
+
+options("scflow_species" = args$species)
+options("scflow_reddimplot_pointsize" = args$reddimplot_pointsize)
+options("scflow_reddimplot_alpha" = args$reddimplot_alpha)
 
 ##  ............................................................................
 ##  Start                                                                   ####
@@ -69,7 +100,8 @@ sce <- map_celltypes_sce(
   sce, 
   ctd_folder = args$ctd_folder,
   clusters_colname = args$clusters_colname,
-  cells_to_sample = args$cells_to_sample
+  cells_to_sample = args$cells_to_sample,
+  species = args$species
   )
 
 ##  ............................................................................

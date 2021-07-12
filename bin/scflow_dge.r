@@ -5,14 +5,12 @@
 #   ____________________________________________________________________________
 #   Initialization                                                          ####
 
-options(mc.cores = future::availableCores())
-print(future::availableCores())
 
 ##  ............................................................................
 ##  Load packages                                                           ####
 library(argparse)
-library(scFlow)
 library(cli)
+# Note: scFlow is loaded after the mc.cores option is defined/overriden below
 
 ##  ............................................................................
 ##  Parse command-line arguments                                            ####
@@ -155,14 +153,58 @@ required$add_argument(
   required = TRUE
 )
 
+required$add_argument(
+  "--species",
+  help = "the biological species (e.g. mouse, human)",
+  default = "human",
+  required = TRUE
+  )
+
+required$add_argument(
+  "--max_cores",
+  default = NULL,
+  help = "override for lower cpu core usage",
+  metavar = "N",
+  required = TRUE
+)
+
 # get command line options, if help option encountered print help and exit,
 # otherwise if options not found on command line then set defaults
 args <- parser$parse_args()
+
+options("scflow_species" = args$species)
+
 args$rescale_numerics <- as.logical(args$rescale_numerics)
 args$pseudobulk <- as.logical(args$pseudobulk)
 args$force_run <- as.logical(args$force_run)
 if(tolower(args$random_effects_var) == "null") args$random_effects_var <- NULL
+
+args$max_cores <- if(toupper(args$max_cores) == "NULL") NULL else { 
+  as.numeric(as.character(args$max_cores))
+}
+
 args$confounding_vars <- strsplit(args$confounding_vars, ",")[[1]]
+
+#   ____________________________________________________________________________
+#   Delay Package Loading for Optional Max Cores Override
+
+n_cores <- future::availableCores(methods = "mc.cores")
+
+if (is.null(args$max_cores)) {
+  options(mc.cores = n_cores)
+} else {
+  options(mc.cores = min(args$max_cores, n_cores))
+}
+
+cli::cli_alert(sprintf(
+  "Using %s cores on system with %s available cores.",
+  getOption("mc.cores"),
+  n_cores
+))
+
+# RhpcBLASctl::omp_set_num_threads(1L)
+
+library(scFlow)
 
 #   ____________________________________________________________________________
 #   Start DE                                                                ####
@@ -203,8 +245,9 @@ de_results <- perform_de(
   pval_cutoff = args$pval_cutoff,
   mast_method = args$mast_method,
   force_run = args$force_run,
-  ensembl_mapping_file = args$ensembl_mappings
-  )
+  ensembl_mapping_file = args$ensembl_mappings,
+  species = getOption("scflow_species")
+)
 
 new_dirs <- c(
   "de_table",
@@ -229,12 +272,14 @@ for (result in names(de_results)) {
       report_folder_path = file.path(getwd(), "de_report"),
       report_file = paste0(file_name, result, "_scflow_de_report"))
 
+    print("report generated")
     png(file.path(getwd(), "de_plot",
                   paste0(file_name, result, "_volcano_plot.png")),
         width = 247, height = 170, units = "mm", res = 600)
     print(attr(de_results[[result]], "plot"))
     dev.off()
 
+    print("first png generated")
     p <- attr(de_results[[result]], "plot")
     plot_data <- p$data
     write.table(p$data,

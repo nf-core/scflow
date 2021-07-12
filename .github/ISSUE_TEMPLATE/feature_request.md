@@ -1,3 +1,9 @@
+---
+name: Feature request
+about: Suggest an idea for the nf-core/scflow pipeline
+labels: enhancement
+---
+
 <!--
 # nf-core/scflow feature request
 

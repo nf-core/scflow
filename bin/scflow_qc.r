@@ -225,6 +225,13 @@ required$add_argument(
 )
 
 required$add_argument(
+  "--dpk",
+  default = "NULL",
+  help = "doublets per thousands cells increment if doublet_rate is 0",
+  required = TRUE
+)
+
+required$add_argument(
   "--find_cells",
   help = "run empty drops (ambient RNA) algorithm (lgl)",
   metavar = "TRUE", 
@@ -274,10 +281,20 @@ required$add_argument(
   required = TRUE
 )
 
+required$add_argument(
+  "--species",
+  help = "the biological species (e.g. mouse, human)",
+  default = "human",
+  required = TRUE
+  )
+
 ### . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ..
 ### Pre-process args                                                        ####
 
 args <- parser$parse_args()
+
+options("scflow_species" = args$species)
+
 args[startsWith(names(args), "drop_")] <- 
   as.logical(args[startsWith(names(args), "drop_")])
 args$max_library_size <- ifelse(
@@ -298,6 +315,9 @@ args$max_mito <- ifelse(
 args$pK <- if(toupper(args$pK) == "NULL") NULL else { 
   as.numeric(as.character(args$pK))
 }
+args$dpk <- if(toupper(args$dpk) == "NULL") NULL else { 
+  as.numeric(as.character(args$dpk))
+}
 
 if(toupper(args$retain) == "NULL") {
   args$retain <- NULL
@@ -308,7 +328,6 @@ if(toupper(args$retain) == "NULL") {
 }
 
 args$find_singlets <- as.logical(args$find_singlets)
-args$factor_vars <- strsplit(args$factor_vars, ",")[[1]]
 args$vars_to_regress_out <- strsplit(args$vars_to_regress_out, ",")[[1]]
 args <- purrr::map(args, function(x) {
   if (length(x) == 1) {
@@ -319,15 +338,22 @@ args <- purrr::map(args, function(x) {
   return(x)
 })
 
+if(!is.null(args$factor_vars)) {
+    args$factor_vars <- strsplit(args$factor_vars, ",")[[1]]
+    col_classes <- rep("factor", length(args$factor_vars))
+    names(col_classes) <- args$factor_vars
+} else {
+    col_classes <- NA
+}
+
+
+
 ##  ............................................................................
 ##  Start QC                                                                ####
 
 cli::boxx(paste0("Analysing: ", args$key), float = "center")
 
 mat <- scFlow::read_sparse_matrix(args$mat_path)
-
-col_classes <- rep("factor", length(args$factor_vars))
-names(col_classes) <- args$factor_vars
 
 metadata <- read_metadata(
   unique_key = args$key,
@@ -367,7 +393,8 @@ sce <- annotate_sce(
   nmads = args$nmads,
   annotate_genes = TRUE,
   annotate_cells = TRUE,
-  ensembl_mapping_file = args$ensembl_mappings
+  ensembl_mapping_file = args$ensembl_mappings,
+  species = args$species
 )
 
 sce <- filter_sce(
@@ -384,6 +411,7 @@ if(args$find_singlets) {
     pca_dims = args$pca_dims,
     var_features = args$var_features,
     doublet_rate = args$doublet_rate,
+    dpk = args$dpk,
     pK = args$pK,
     num.cores = future::availableCores()
   )
@@ -399,7 +427,8 @@ dir.create(file.path(getwd(), "qc_report"))
 
 report_qc_sce(
   sce = sce,
-  report_folder_path = file.path(getwd(), "qc_report"),
+  #report_folder_path = file.path(getwd(), "qc_report"),
+  report_folder_path = file.path(getwd()),
   report_file = paste0(args$key, "_scflow_qc_report")
 )
 

@@ -11,38 +11,57 @@
             "fa_icon": "fas fa-terminal",
             "description": "Define where the pipeline should find input data and save output data.",
             "properties": {
+                "input": {
+                    "type": "string",
+                    "default": "./refs/Manifest.txt",
+                    "fa_icon": "fas fa-table",
+                    "description": "The .tsv file specifying sample matrix filepaths."
+                },
                 "samplesheet": {
                     "type": "string",
                     "default": "./refs/SampleSheet.tsv",
-                    "fa_icon": "fas fa-table"
+                    "fa_icon": "fas fa-table",
+                    "description": "The .tsv file specifying sample metadata."
                 },
                 "ensembl_mappings": {
                     "type": "string",
-                    "default": "./src/ensembl-ids/ensembl_mappings.tsv",
-                    "fa_icon": "fas fa-table"
+                    "default": "https://raw.githubusercontent.com/nf-core/test-datasets/scflow/assets/ensembl_mappings.tsv",
+                    "fa_icon": "fas fa-table",
+                    "description": "Optional tsv file containing mappings between ensembl_gene_id's and gene_names's"
+                },
+                "ctd_path": {
+                    "type": "string",
+                    "default": "https://s3-eu-west-1.amazonaws.com/pfigshare-u-files/28033407/ctd_v1.zip",
+                    "description": "Cell-type annotations reference file path",
+                    "help_text": "This is a zip file containing cell-type annotation reference files for the EWCE package.",
+                    "fa_icon": "fas fa-file-archive"
                 },
                 "celltype_mappings": {
                     "type": "string",
                     "default": "./conf/celltype_mappings.tsv",
-                    "fa_icon": "fas fa-table"
-                },
-                "ctd_folder": {
-                    "type": "string",
-                    "default": "./refs/ctd",
-                    "fa_icon": "fas fa-folder"
+                    "fa_icon": "fas fa-table",
+                    "description": "Optional tsv file specifying manual revisions of cell-type annotations."
                 },
                 "reddim_genes_yml": {
                     "type": "string",
                     "default": "./conf/reddim_genes.yml",
-                    "fa_icon": "fas fa-list"
+                    "fa_icon": "fas fa-list",
+                    "description": "Optional list of genes of interest in YML format for plotting of gene expression."
+                },
+                "species": {
+                    "type": "string",
+                    "default": "human",
+                    "fa_icon": "fas fa-male",
+                    "description": "Input sample species.",
+                    "help_text": "Currently, \"human\" and \"mouse\" are supported."
                 }
             },
             "required": [
+                "input",
                 "samplesheet",
                 "ensembl_mappings",
-                "celltype_mappings",
-                "ctd_folder",
-                "reddim_genes_yml"
+                "ctd_path",
+                "species"
             ],
             "help_text": ""
         },
@@ -92,18 +111,22 @@
                 "qc_min_ribo": {
                     "type": "number",
                     "description": "Minimum proportion of counts mapping to ribosomal genes.",
-                    "fa_icon": "fas fa-greater-than-equal"
+                    "fa_icon": "fas fa-greater-than-equal",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "qc_max_ribo": {
+                    "type": "number",
+                    "default": 1.0,
+                    "description": "Maximum proportion of counts mapping to ribosomal genes.",
+                    "fa_icon": "fas fa-less-than-equal",
+                    "minimum": 0,
+                    "maximum": 1
                 },
                 "qc_max_mito": {
                     "type": "string",
                     "default": "adaptive",
                     "description": "Maximum proportion of counts mapping to mitochondrial genes.",
-                    "fa_icon": "fas fa-less-than-equal"
-                },
-                "qc_max_ribo": {
-                    "type": "number",
-                    "default": 1,
-                    "description": "Maximum proportion of counts mapping to ribosomal genes.",
                     "fa_icon": "fas fa-less-than-equal"
                 },
                 "qc_min_counts": {
@@ -121,25 +144,26 @@
                     "fa_icon": "fas fa-greater-than-equal"
                 },
                 "qc_drop_unmapped": {
-                    "type": "boolean",
-                    "default": true,
+                    "type": "string",
+                    "default": "True",
                     "description": "Option to drop unmapped genes.",
                     "fa_icon": "fas fa-cut"
                 },
                 "qc_drop_mito": {
-                    "type": "boolean",
-                    "default": true,
+                    "type": "string",
+                    "default": "True",
                     "description": "Option to drop mitochondrial genes.",
                     "fa_icon": "fas fa-cut"
                 },
                 "qc_drop_ribo": {
-                    "type": "boolean",
+                    "type": "string",
                     "description": "Option to drop ribosomal genes.",
-                    "fa_icon": "fas fa-cut"
+                    "fa_icon": "fas fa-cut",
+                    "default": "false"
                 },
                 "qc_nmads": {
                     "type": "number",
-                    "default": 4,
+                    "default": 4.0,
                     "description": "The number of MADs for outlier detection.",
                     "help_text": "The number of median absolute deviations (MADs) used to define outliers for adaptive thresholding.",
                     "fa_icon": "fas fa-mountain"
@@ -153,9 +177,8 @@
                 "qc_max_library_size",
                 "qc_min_features",
                 "qc_max_features",
-                "qc_min_ribo",
-                "qc_max_mito",
                 "qc_max_ribo",
+                "qc_max_mito",
                 "qc_min_counts",
                 "qc_min_cells",
                 "qc_drop_unmapped",
@@ -172,26 +195,55 @@
             "properties": {
                 "amb_find_cells": {
                     "type": "string",
-                    "default": "true"
+                    "default": "true",
+                    "description": "Enable ambient RNA / empty droplet profiling.",
+                    "fa_icon": "fas fa-cut"
                 },
                 "amb_retain": {
-                    "type": "integer",
-                    "default": 12000
+                    "type": "string",
+                    "default": "auto",
+                    "help_text": "A numeric scalar specifying the threshold for the total UMI count above which all barcodes are assumed to contain cells, or \"auto\" for automated estimation based on the data.",
+                    "description": "Upper UMI counts threshold for true cell annotation.",
+                    "pattern": "^(\\d+|auto)$",
+                    "fa_icon": "fas fa-less-than-equal"
                 },
                 "amb_lower": {
                     "type": "integer",
-                    "default": 100
+                    "default": 100,
+                    "help_text": "A numeric scalar specifying the lower bound on the total UMI count, at or below which all barcodes are assumed to correspond to empty droplets.",
+                    "description": "Lower UMI counts threshold for empty droplet annotation.",
+                    "fa_icon": "fas fa-greater-than-equal"
                 },
                 "amb_alpha_cutoff": {
                     "type": "number",
-                    "default": 0.001
+                    "default": 0.001,
+                    "description": "The maximum FDR for the emptyDrops algorithm.",
+                    "fa_icon": "fas fa-less-than-equal"
                 },
                 "amb_niters": {
                     "type": "integer",
-                    "default": 10000
+                    "default": 10000,
+                    "help_text": "An integer scalar specifying the number of iterations to use for the Monte Carlo p-value calculations for the emptyDrops algorithm.",
+                    "description": "Number of Monte Carlo p-value iterations.",
+                    "fa_icon": "fas fa-recycle"
+                },
+                "amb_expect_cells": {
+                    "type": "integer",
+                    "default": 3000,
+                    "description": "Expected number of cells per sample.",
+                    "help_text": "If the \"retain\" parameter is set to \"auto\" (recommended), then this parameter is used to identify the optimal value for \"retain\" for the emptyDrops algorithm.",
+                    "fa_icon": "fas fa-greater-than-equal"
                 }
             },
-            "fa_icon": "far fa-chart-bar"
+            "fa_icon": "far fa-chart-bar",
+            "required": [
+                "amb_find_cells",
+                "amb_retain",
+                "amb_lower",
+                "amb_alpha_cutoff",
+                "amb_niters",
+                "amb_expect_cells"
+            ]
         },
         "multiplet_identification": {
             "title": "Multiplet Identification",
@@ -201,37 +253,59 @@
             "properties": {
                 "mult_find_singlets": {
                     "type": "string",
-                    "default": "true"
+                    "default": "true",
+                    "description": "Enable doublet/multiplet identification."
                 },
                 "mult_singlets_method": {
                     "type": "string",
-                    "default": "doubletfinder"
+                    "default": "doubletfinder",
+                    "description": "Algorithm to use for doublet/multiplet identification."
                 },
                 "mult_vars_to_regress_out": {
                     "type": "string",
-                    "default": "nCount_RNA,pc_mito"
+                    "default": "nCount_RNA,pc_mito",
+                    "description": "Variables to regress out for dimensionality reduction."
                 },
                 "mult_pca_dims": {
                     "type": "integer",
-                    "default": 10
+                    "default": 10,
+                    "description": "Number of PCA dimensions to use."
                 },
                 "mult_var_features": {
                     "type": "integer",
-                    "default": 2000
+                    "default": 2000,
+                    "description": "The top n most variable features to use."
                 },
                 "mult_doublet_rate": {
-                    "type": "integer"
+                    "type": "number",
+                    "description": "A fixed doublet rate.",
+                    "help_text": "Use a fixed default rate (e.g. 0.075 to specify that 7.5% of all cells should be marked as doublets), or set to 0 to use the \"dpk\" method (recommended)."
                 },
                 "mult_dpk": {
                     "type": "integer",
-                    "default": 8
+                    "default": 8,
+                    "description": "Doublets per thousand cells increment.",
+                    "help_text": "The doublets per thousand cell increment specifies the expected doublet rate based on the number of cells, i.e. with a dpk of 8 (recommended by 10X), a dataset with 1000 cells is expected to contain 8 doublets per thousand cells, a dataset with 2000 cells is expected to contain 16 doublets per thousand cells, and a dataset with 10000 cells is expected to contain 80 cells per thousand cells (or 800 doublets in total).  If the \"doublet_rate\" parameter is manually specified this recommended incremental behaviour is overridden.",
+                    "minimum": 0,
+                    "maximum": 1000
                 },
                 "mult_pK": {
                     "type": "number",
-                    "default": 0.02
+                    "default": 0.02,
+                    "description": "Specify a pK value instead of parameter sweep.",
+                    "help_text": "The optimal pK value used by the doubletFinder algorithm is determined following a compute-intensive parameter sweep.  The parameter sweep can be overridden by manually specifying a pK value."
                 }
             },
-            "fa_icon": "fas fa-adjust"
+            "fa_icon": "fas fa-adjust",
+            "required": [
+                "mult_find_singlets",
+                "mult_singlets_method",
+                "mult_vars_to_regress_out",
+                "mult_pca_dims",
+                "mult_var_features",
+                "mult_dpk",
+                "mult_pK"
+            ]
         },
         "merge": {
             "title": "Merge",
@@ -241,18 +315,29 @@
             "properties": {
                 "merge_plot_vars": {
                     "type": "string",
-                    "default": "total_features_by_counts,total_counts,pc_mito,pc_ribo"
+                    "default": "total_features_by_counts,total_counts,pc_mito,pc_ribo",
+                    "description": "Numeric variables for inter-sample metrics.",
+                    "help_text": "A comma-separated list of numeric variables which differ between individual cells of each sample.  The merged sample report will include plots facilitating between-sample comparisons for each of these numeric variables."
                 },
                 "merge_facet_vars": {
                     "type": "string",
-                    "default": "NULL"
+                    "default": "NULL",
+                    "description": "Categorical variables for further sub-setting of plots",
+                    "help_text": "A comma-separated list of categorical variables.  The merged sample report will include additional plots of sample metrics subset by each of these variables (e.g. sex, diagnosis)."
                 },
                 "merge_outlier_vars": {
                     "type": "string",
-                    "default": "total_features_by_counts,total_counts"
+                    "default": "total_features_by_counts,total_counts",
+                    "description": "Numeric variables for outlier identification.",
+                    "help_text": "The merged report will include tables highlighting samples that are putative outliers for each of these numeric variables."
                 }
             },
-            "fa_icon": "fas fa-object-ungroup"
+            "fa_icon": "fas fa-object-ungroup",
+            "required": [
+                "merge_plot_vars",
+                "merge_facet_vars",
+                "merge_outlier_vars"
+            ]
         },
         "integration": {
             "title": "Integration",
@@ -262,117 +347,206 @@
             "properties": {
                 "integ_method": {
                     "type": "string",
-                    "default": "Liger"
+                    "default": "Liger",
+                    "description": "Choice of integration method."
                 },
                 "integ_unique_id_var": {
                     "type": "string",
-                    "default": "manifest"
+                    "default": "manifest",
+                    "description": "Unique sample identifier variable."
                 },
                 "integ_take_gene_union": {
-                    "type": "string"
+                    "type": "string",
+                    "default": "false",
+                    "description": "Fill out matrices with union of genes.",
+                    "help_text": "See rliger::createLiger().  Whether to fill out raw.data matrices with union of genes across all datasets (filling in 0 for missing data) (requires make.sparse = TRUE) (default FALSE)."
                 },
                 "integ_remove_missing": {
                     "type": "string",
-                    "default": "true"
+                    "default": "true",
+                    "description": "Remove non-expressing cells/genes.",
+                    "help_text": "See rliger::createLiger().  Whether to remove cells not expressing any measured genes, and genes not expressed in any cells (if take.gene.union = TRUE, removes only genes not expressed in any dataset) (default TRUE)."
                 },
                 "integ_num_genes": {
                     "type": "integer",
-                    "default": 3000
+                    "default": 3000,
+                    "description": "Number of genes to find for each dataset.",
+                    "help_text": "See rliger::selectGenes(). Number of genes to find for each dataset. Optimises the value of var.thresh for each dataset to get this number of genes."
                 },
                 "integ_combine": {
                     "type": "string",
-                    "default": "union"
+                    "default": "union",
+                    "description": "How to combine variable genes across experiments.",
+                    "help_text": "See rliger::selectGenes().  Either \"union\" or \"intersection\"."
                 },
                 "integ_keep_unique": {
-                    "type": "string"
+                    "type": "string",
+                    "default": "false",
+                    "description": "Keep unique genes.",
+                    "help_text": "See rliger::selectGenes()."
                 },
                 "integ_capitalize": {
-                    "type": "string"
+                    "type": "string",
+                    "default": "false",
+                    "description": "Capitalize gene names to match homologous genes.",
+                    "help_text": "See rliger::selectGenes()."
                 },
                 "integ_use_cols": {
                     "type": "string",
-                    "default": "true"
+                    "default": "true",
+                    "description": "Treat each column as a cell.",
+                    "help_text": "See rliger::removeMissingObs()."
                 },
                 "integ_k": {
                     "type": "integer",
-                    "default": 30
+                    "default": 30,
+                    "description": "Inner dimension of factorization (n factors).",
+                    "help_text": "See rliger::optimizeALS().  Inner dimension of factorization (number of factors). Run suggestK to determine appropriate value; a general rule of thumb is that a higher k will be needed for datasets with more sub-structure."
                 },
                 "integ_lambda": {
-                    "type": "integer",
-                    "default": 5
+                    "type": "number",
+                    "default": 5.0,
+                    "description": "Regularization parameter.",
+                    "help_text": "See rliger::optimizeALS(). Regularization parameter. Larger values penalize dataset-specific effects more strongly (ie. alignment should increase as lambda increases). Run suggestLambda to determine most appropriate value for balancing dataset alignment and agreement (default 5.0)."
                 },
                 "integ_thresh": {
                     "type": "number",
-                    "default": 0.0001
+                    "default": 0.0001,
+                    "description": "Convergence threshold.",
+                    "help_text": "See rliger::optimizeALS()."
                 },
                 "integ_max_iters": {
                     "type": "integer",
-                    "default": 100
+                    "default": 100,
+                    "description": "Maximum number of block coordinate descent iterations.",
+                    "help_text": "See rliger::optimizeALS()."
                 },
                 "integ_nrep": {
                     "type": "integer",
-                    "default": 1
+                    "default": 1,
+                    "description": "Number of restarts to perform.",
+                    "help_text": "See rliger::optimizeALS()."
                 },
                 "integ_rand_seed": {
                     "type": "integer",
-                    "default": 1
+                    "default": 1,
+                    "description": "Random seed for reproducible results."
                 },
                 "integ_knn_k": {
                     "type": "integer",
-                    "default": 20
+                    "default": 20,
+                    "description": "Number of neearest neighbours for within-dataset knn graph.",
+                    "help_text": "See rliger::quantile_norm()."
                 },
                 "integ_k2": {
                     "type": "integer",
-                    "default": 500
+                    "default": 500,
+                    "description": "Horizon parameter for shared nearest factor graph.",
+                    "help_text": "See rliger::quantileAlignSNF().  Distances to all but the k2 nearest neighbors are set to 0 (cuts down on memory usage for very large graphs)."
                 },
                 "integ_prune_thresh": {
                     "type": "number",
-                    "default": 0.2
+                    "default": 0.2,
+                    "description": "Minimum allowed edge weight.",
+                    "help_text": "See rliger::quantileAlignSNF()."
                 },
                 "integ_ref_dataset": {
                     "type": "string",
-                    "default": "NULL"
+                    "default": "NULL",
+                    "description": "Name of dataset to use as a reference.",
+                    "help_text": "See rliger::quantile_norm().  Name of dataset to use as a \"reference\" for normalization. By default, the dataset with the largest number of cells is used."
                 },
                 "integ_min_cells": {
                     "type": "integer",
-                    "default": 2
+                    "default": 2,
+                    "description": "Minimum number of cells to consider a cluster shared across datasets.",
+                    "help_text": "See rliger::quantile_norm()."
                 },
                 "integ_quantiles": {
                     "type": "integer",
-                    "default": 50
+                    "default": 50,
+                    "description": "Number of quantiles to use for normalization.",
+                    "help_text": "See rliger::quantile_norm()."
                 },
                 "integ_nstart": {
                     "type": "integer",
-                    "default": 10
+                    "default": 10,
+                    "description": "Number of times to perform Louvain community detection.",
+                    "help_text": "See rliger::quantileAlignSNF().  Number of times to perform Louvain community detection with different random starts (default 10)."
                 },
                 "integ_resolution": {
                     "type": "integer",
-                    "default": 1
+                    "default": 1,
+                    "description": "Controls the number of communities detected.",
+                    "help_text": "See rliger::quantileAlignSNF()."
                 },
                 "integ_dims_use": {
                     "type": "string",
-                    "default": "NULL"
+                    "default": "NULL",
+                    "description": "Indices of factors to use for shared nearest factor determination.",
+                    "help_text": "See rliger::quantile_norm()."
                 },
                 "integ_dist_use": {
                     "type": "string",
-                    "default": "CR"
+                    "default": "CR",
+                    "description": "Distance metric to use in calculating nearest neighbour.",
+                    "help_text": "See rliger::quantileAlignSNF().  Default \"CR\"."
                 },
                 "integ_center": {
-                    "type": "string"
+                    "type": "string",
+                    "default": "false",
+                    "description": "Center the data when scaling factors.",
+                    "help_text": "See rliger::quantile_norm()."
                 },
                 "integ_small_clust_thresh": {
-                    "type": "integer"
+                    "type": "integer",
+                    "help_text": "See rliger::quantileAlignSNF().  Extracts small clusters loading highly on single factor with fewer cells than this before regular alignment (default 0 \u2013 no small cluster extraction).",
+                    "description": "Small cluster extraction cells threshold."
                 },
                 "integ_categorical_covariates": {
                     "type": "string",
-                    "default": "individual,diagnosis,region,sex"
+                    "default": "individual,diagnosis,region,sex",
+                    "description": "Categorical variables for integration report metrics.",
+                    "help_text": "The integration report will provide plots and integration metrics for these categorical variables."
                 },
                 "integ_input_reduced_dim": {
                     "type": "string",
-                    "default": "UMAP"
+                    "default": "UMAP",
+                    "description": "Reduced dimension embedding for the integration report.",
+                    "help_text": "The integration report will provide with and without integration plots using this embedding."
                 }
             },
-            "fa_icon": "far fa-object-group"
+            "fa_icon": "far fa-object-group",
+            "required": [
+                "integ_method",
+                "integ_unique_id_var",
+                "integ_take_gene_union",
+                "integ_remove_missing",
+                "integ_num_genes",
+                "integ_combine",
+                "integ_keep_unique",
+                "integ_capitalize",
+                "integ_use_cols",
+                "integ_k",
+                "integ_lambda",
+                "integ_thresh",
+                "integ_max_iters",
+                "integ_nrep",
+                "integ_rand_seed",
+                "integ_knn_k",
+                "integ_k2",
+                "integ_prune_thresh",
+                "integ_ref_dataset",
+                "integ_min_cells",
+                "integ_quantiles",
+                "integ_nstart",
+                "integ_resolution",
+                "integ_dims_use",
+                "integ_dist_use",
+                "integ_center",
+                "integ_categorical_covariates",
+                "integ_input_reduced_dim"
+            ]
         },
         "dimensionality_reduction": {
             "title": "Dimensionality Reduction",
@@ -382,128 +556,243 @@
             "properties": {
                 "reddim_input_reduced_dim": {
                     "type": "string",
-                    "default": "PCA,Liger"
+                    "default": "PCA,Liger",
+                    "description": "Input matrix for dimension reduction."
                 },
                 "reddim_reduction_methods": {
                     "type": "string",
-                    "default": "tSNE,UMAP,UMAP3D"
+                    "default": "tSNE,UMAP,UMAP3D",
+                    "description": "Dimension reduction outputs to generate.",
+                    "help_text": "Typically 'UMAP,UMAP3D' or 'tSNE'."
                 },
                 "reddim_vars_to_regress_out": {
                     "type": "string",
-                    "default": "nCount_RNA,pc_mito"
+                    "default": "nCount_RNA,pc_mito",
+                    "description": "Variables to regress out before dimension reduction."
                 },
                 "reddim_umap_pca_dims": {
                     "type": "integer",
-                    "default": 30
+                    "default": 30,
+                    "description": "Number of PCA dimensions.",
+                    "help_text": "See uwot::umap()."
                 },
                 "reddim_umap_n_neighbors": {
                     "type": "integer",
-                    "default": 35
+                    "default": 35,
+                    "description": "Number of nearest neighbours to use.",
+                    "help_text": "See uwot::umap()."
                 },
                 "reddim_umap_n_components": {
                     "type": "integer",
-                    "default": 2
+                    "default": 2,
+                    "description": "The dimension of the space to embed into.",
+                    "help_text": "See uwot::umap(). The dimension of the space to embed into. This defaults to 2 to provide easy visualization, but can reasonably be set to any integer value in the range 2 to 100."
                 },
                 "reddim_umap_init": {
                     "type": "string",
-                    "default": "spectral"
+                    "default": "spectral",
+                    "description": "Type of initialization for the coordinates.",
+                    "help_text": "See uwot::umap().",
+                    "enum": [
+                        "spectral",
+                        "normlaplacian",
+                        "random",
+                        "lvrandom",
+                        "laplacian",
+                        "pca",
+                        "spca",
+                        "agspectral"
+                    ]
                 },
                 "reddim_umap_metric": {
                     "type": "string",
-                    "default": "euclidean"
+                    "default": "euclidean",
+                    "description": "Distance metric for finding nearest neighbours.",
+                    "help_text": "See uwot::umap().",
+                    "enum": [
+                        "euclidean",
+                        "cosine",
+                        "manhattan",
+                        "hamming",
+                        "correlation",
+                        "categorical"
+                    ]
                 },
                 "reddim_umap_n_epochs": {
                     "type": "integer",
-                    "default": 200
+                    "default": 200,
+                    "description": "Number of epochs to us during optimization of embedded coordinates.",
+                    "help_text": "See uwot::umap()."
                 },
                 "reddim_umap_learning_rate": {
                     "type": "integer",
-                    "default": 1
+                    "default": 1,
+                    "description": "Initial learning rate used in optimization of coordinates.",
+                    "help_text": "See uwot::umap()."
                 },
                 "reddim_umap_min_dist": {
                     "type": "number",
-                    "default": 0.4
+                    "default": 0.4,
+                    "description": "Effective minimum distance between embedded points.",
+                    "help_text": "See uwot::umap().  Smaller values will result in a more clustered/clumped embedding where nearby points on the manifold are drawn closer together, while larger values will result on a more even dispersal of points. The value should be set relative to the spread value, which determines the scale at which embedded points will be spread out."
                 },
                 "reddim_umap_spread": {
                     "type": "number",
-                    "default": 0.85
+                    "default": 0.85,
+                    "description": "Effective scale of embedded points.",
+                    "help_text": "See uwot::umap().  In combination with min_dist, this determines how clustered/clumped the embedded points are."
                 },
                 "reddim_umap_set_op_mix_ratio": {
-                    "type": "integer",
-                    "default": 1
+                    "type": "number",
+                    "default": 1.0,
+                    "description": "Interpolation to combine local fuzzy sets.",
+                    "help_text": "See uwot::umap().  The value of this parameter should be between 0.0 and 1.0; a value of 1.0 will use a pure fuzzy union, while 0.0 will use a pure fuzzy intersection.",
+                    "minimum": 0,
+                    "maximum": 1
                 },
                 "reddim_umap_local_connectivity": {
                     "type": "integer",
-                    "default": 1
+                    "default": 1,
+                    "description": "Local connectivity required.",
+                    "help_text": "See uwot::umap().  The local connectivity required \u2013 i.e. the number of nearest neighbors that should be assumed to be connected at a local level. The higher this value the more connected the manifold becomes locally."
                 },
                 "reddim_umap_repulsion_strength": {
                     "type": "integer",
-                    "default": 1
+                    "default": 1,
+                    "description": "Weighting applied to negative samples in embedding optimization.",
+                    "help_text": "See uwot::umap().  Weighting applied to negative samples in low dimensional embedding optimization. Values higher than one will result in greater weight being given to negative samples."
                 },
                 "reddim_umap_negative_sample_rate": {
                     "type": "integer",
-                    "default": 5
+                    "default": 5,
+                    "description": "Number of negative edge samples to use per positive edge sample.",
+                    "help_text": "See uwot::umap().  The number of negative edge/1-simplex samples to use per positive edge/1-simplex sample in optimizing the low dimensional embedding."
                 },
                 "reddim_umap_fast_sgd": {
-                    "type": "string"
+                    "type": "string",
+                    "default": "false",
+                    "description": "Use fast SGD.",
+                    "help_text": "See uwot::umap().  Setting this to TRUE will speed up the stochastic optimization phase, but give a potentially less accurate embedding, and which will not be exactly reproducible even with a fixed seed. For visualization, fast_sgd = TRUE will give perfectly good results. For more generic dimensionality reduction, it's safer to leave fast_sgd = FALSE."
                 },
                 "reddim_tsne_dims": {
                     "type": "integer",
-                    "default": 2
+                    "default": 2,
+                    "description": "Output dimensionality.",
+                    "help_text": "See Rtsne::Rtsne()."
                 },
                 "reddim_tsne_initial_dims": {
                     "type": "integer",
-                    "default": 50
+                    "default": 50,
+                    "description": "Number of dimensions retained in the initial PCA step.",
+                    "help_text": "See Rtsne::Rtsne()."
                 },
                 "reddim_tsne_perplexity": {
                     "type": "integer",
-                    "default": 150
+                    "default": 150,
+                    "description": "Perplexity parameter.",
+                    "help_text": "See Rtsne::Rtsne()."
                 },
                 "reddim_tsne_theta": {
                     "type": "number",
-                    "default": 0.5
+                    "default": 0.5,
+                    "description": "Speed/accuracy trade-off.",
+                    "help_text": "See Rtsne::Rtsne().  Speed/accuracy trade-off (increase for less accuracy), set to 0.0 for exact TSNE (default: 0.5)."
                 },
                 "reddim_tsne_stop_lying_iter": {
                     "type": "integer",
-                    "default": 250
+                    "default": 250,
+                    "description": "Iteration after which perplexities are no longer exaggerated.",
+                    "help_text": "See Rtsne::Rtsne().  Iteration after which the perplexities are no longer exaggerated (default: 250, except when Y_init is used, then 0)."
                 },
                 "reddim_tsne_mom_switch_iter": {
                     "type": "integer",
-                    "default": 250
+                    "default": 250,
+                    "description": "Iteration after which the final momentum is used.",
+                    "help_text": "See Rtsne::Rtsne().  Iteration after which the final momentum is used (default: 250, except when Y_init is used, then 0)."
                 },
                 "reddim_tsne_max_iter": {
                     "type": "integer",
-                    "default": 1000
+                    "default": 1000,
+                    "description": "Number of iterations.",
+                    "help_text": "See Rtsne::Rtsne(). "
                 },
                 "reddim_tsne_pca_center": {
                     "type": "string",
-                    "default": "true"
+                    "default": "true",
+                    "description": "Center data before PCA.",
+                    "help_text": "See Rtsne::Rtsne(). Should data be centered before pca is applied? (default: TRUE)"
                 },
                 "reddim_tsne_pca_scale": {
-                    "type": "string"
+                    "type": "string",
+                    "default": "false",
+                    "description": "Scale data before PCA.",
+                    "help_text": "See Rtsne::Rtsne().  Should data be scaled before pca is applied? (default: FALSE)."
                 },
                 "reddim_tsne_normalize": {
                     "type": "string",
-                    "default": "true"
+                    "default": "true",
+                    "description": "Normalize data before distance calculations.",
+                    "help_text": "See Rtsne::Rtsne(). Should data be normalized internally prior to distance calculations with normalize_input? (default: TRUE)"
                 },
                 "reddim_tsne_momentum": {
                     "type": "number",
-                    "default": 0.5
+                    "default": 0.5,
+                    "description": "Momentum used in the first part of optimization.",
+                    "help_text": "See Rtsne::Rtsne(). "
                 },
                 "reddim_tsne_final_momentum": {
                     "type": "number",
-                    "default": 0.8
+                    "default": 0.8,
+                    "description": "Momentum used in the final part of optimization.",
+                    "help_text": "See Rtsne::Rtsne(). "
                 },
                 "reddim_tsne_eta": {
                     "type": "integer",
-                    "default": 1000
+                    "default": 1000,
+                    "description": "Learning rate.",
+                    "help_text": "See Rtsne::Rtsne(). "
                 },
                 "reddim_tsne_exaggeration_factor": {
                     "type": "integer",
-                    "default": 12
+                    "default": 12,
+                    "description": "Exaggeration factor used in the first part of the optimization.",
+                    "help_text": "See Rtsne::Rtsne().  Exaggeration factor used to multiply the P matrix in the first part of the optimization (default: 12.0)."
                 }
             },
-            "fa_icon": "fas fa-cubes"
+            "fa_icon": "fas fa-cubes",
+            "required": [
+                "reddim_input_reduced_dim",
+                "reddim_reduction_methods",
+                "reddim_vars_to_regress_out",
+                "reddim_umap_pca_dims",
+                "reddim_umap_n_neighbors",
+                "reddim_umap_n_components",
+                "reddim_umap_init",
+                "reddim_umap_metric",
+                "reddim_umap_n_epochs",
+                "reddim_umap_learning_rate",
+                "reddim_umap_min_dist",
+                "reddim_umap_spread",
+                "reddim_umap_set_op_mix_ratio",
+                "reddim_umap_local_connectivity",
+                "reddim_umap_repulsion_strength",
+                "reddim_umap_negative_sample_rate",
+                "reddim_umap_fast_sgd",
+                "reddim_tsne_dims",
+                "reddim_tsne_initial_dims",
+                "reddim_tsne_perplexity",
+                "reddim_tsne_theta",
+                "reddim_tsne_stop_lying_iter",
+                "reddim_tsne_mom_switch_iter",
+                "reddim_tsne_max_iter",
+                "reddim_tsne_pca_center",
+                "reddim_tsne_pca_scale",
+                "reddim_tsne_normalize",
+                "reddim_tsne_momentum",
+                "reddim_tsne_final_momentum",
+                "reddim_tsne_eta",
+                "reddim_tsne_exaggeration_factor"
+            ]
         },
         "clustering": {
             "title": "Clustering",
@@ -511,28 +800,43 @@
             "description": "Parameters used to tune louvain/leiden clustering.",
             "default": "",
             "properties": {
-                "clust_method": {
+                "clust_cluster_method": {
                     "type": "string",
-                    "default": "leiden"
+                    "default": "leiden",
+                    "description": "Clustering method.",
+                    "help_text": "Specify \"leiden\" or \"louvain\"."
                 },
                 "clust_reduction_method": {
                     "type": "string",
-                    "default": "UMAP_Liger"
+                    "default": "UMAP_Liger",
+                    "description": "Reduced dimension input(s) for clustering.",
+                    "help_text": "One or more of \"UMAP\", \"tSNE\", \"PCA\", \"LSI\"."
                 },
                 "clust_res": {
                     "type": "number",
-                    "default": 0.001
+                    "default": 0.001,
+                    "description": "The resolution of clustering."
                 },
                 "clust_k": {
                     "type": "integer",
-                    "default": 50
+                    "default": 50,
+                    "description": "Integer number of nearest neighbours for clustering.",
+                    "help_text": "Integer number of nearest neighbors to use when creating the k nearest neighbor graph for Louvain/Leiden clustering. k is related to the resolution of the clustering result, a bigger k will result in lower resolution and vice versa."
                 },
                 "clust_louvain_iter": {
                     "type": "integer",
-                    "default": 1
+                    "default": 1,
+                    "description": "The number of iterations for clustering."
                 }
             },
-            "fa_icon": "fas fa-braille"
+            "fa_icon": "fas fa-braille",
+            "required": [
+                "clust_cluster_method",
+                "clust_reduction_method",
+                "clust_res",
+                "clust_k",
+                "clust_louvain_iter"
+            ]
         },
         "cell_type_annotation": {
             "title": "Cell-type Annotation",
@@ -542,26 +846,44 @@
             "properties": {
                 "cta_clusters_colname": {
                     "type": "string",
-                    "default": "clusters"
+                    "default": "clusters",
+                    "description": "SingleCellExperiment clusters colData variable name."
                 },
                 "cta_cells_to_sample": {
                     "type": "integer",
-                    "default": 10000
+                    "default": 10000,
+                    "description": "Max cells to sample."
                 },
                 "cta_unique_id_var": {
                     "type": "string",
-                    "default": "individual"
+                    "default": "individual",
+                    "description": "A sample metadata unique sample ID."
                 },
                 "cta_celltype_var": {
                     "type": "string",
-                    "default": "cluster_celltype"
+                    "default": "cluster_celltype",
+                    "description": "SingleCellExperiment cell-type colData variable name."
                 },
                 "cta_facet_vars": {
                     "type": "string",
-                    "default": "manifest,diagnosis,sex,capdate,prepdate,seqdate"
+                    "default": "manifest,diagnosis,sex,capdate,prepdate,seqdate",
+                    "description": "Cell-type metrics for categorical variables."
+                },
+                "cta_metric_vars": {
+                    "type": "string",
+                    "default": "pc_mito,pc_ribo,total_counts,total_features_by_counts",
+                    "description": "Cell-type metrics for numeric variables."
                 }
             },
-            "fa_icon": "fas fa-brain"
+            "fa_icon": "fas fa-brain",
+            "required": [
+                "cta_clusters_colname",
+                "cta_cells_to_sample",
+                "cta_unique_id_var",
+                "cta_celltype_var",
+                "cta_facet_vars",
+                "cta_metric_vars"
+            ]
         },
         "differential_gene_expression": {
             "title": "Differential Gene Expression",
@@ -569,66 +891,127 @@
             "description": "Parameters for differential gene expression.",
             "default": "",
             "properties": {
-                "dge_method": {
+                "dge_de_method": {
                     "type": "string",
-                    "default": "MASTZLM"
+                    "default": "MASTZLM",
+                    "description": "Differential gene expression method."
                 },
                 "dge_mast_method": {
                     "type": "string",
-                    "default": "bayesglm"
+                    "default": "bayesglm",
+                    "help_text": "See MAST::zlm().  Either 'glm', 'glmer' or 'bayesglm'.",
+                    "description": "MAST method.",
+                    "enum": [
+                        "glm",
+                        "glmer",
+                        "bayesglm"
+                    ]
                 },
                 "dge_min_counts": {
                     "type": "integer",
-                    "default": 1
+                    "default": 1,
+                    "description": "Expressive gene minimum counts.",
+                    "help_text": "Only genes with at least min_counts in min_cells_pc will be tested for differential gene expression."
                 },
                 "dge_min_cells_pc": {
                     "type": "number",
-                    "default": 0.1
+                    "default": 0.1,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Expressive gene minimum cells fraction.",
+                    "help_text": "Only genes with at least min_counts in min_cells_pc will be tested for differential gene expression.  Default 0.1 (i.e. 10% of cells)."
                 },
                 "dge_rescale_numerics": {
                     "type": "string",
-                    "default": "true"
+                    "default": "true",
+                    "description": "Re-scale numeric covariates.",
+                    "help_text": "Re-scaling and centring numeric covariates in a model can improve model performance."
                 },
                 "dge_pseudobulk": {
-                    "type": "string"
+                    "type": "string",
+                    "default": "false",
+                    "description": "Pseudobulked differential gene expression.",
+                    "help_text": "Perform differential gene expression on a smaller matrix where counts are first summed across all cells within a sample (defined by dge_sample_var level)."
                 },
                 "dge_celltype_var": {
                     "type": "string",
-                    "default": "cluster_celltype"
+                    "default": "cluster_celltype",
+                    "description": "Cell-type annotation variable name.",
+                    "help_text": "Differential gene expression is performed separately for each cell-type of this colData variable."
                 },
                 "dge_sample_var": {
                     "type": "string",
-                    "default": "manifest"
+                    "default": "manifest",
+                    "description": "Unique sample identifier variable."
                 },
                 "dge_dependent_var": {
                     "type": "string",
-                    "default": "group"
+                    "default": "group",
+                    "description": "Dependent variable of DGE model.",
+                    "help_text": "The dependent variable may be a categorical (e.g. diagnosis) or a numeric (e.g. histopathology score) variable."
                 },
                 "dge_ref_class": {
                     "type": "string",
-                    "default": "Control"
+                    "default": "Control",
+                    "help_text": "If a categorical dependent variable is specified, then the reference class of the dependent variable is specified here (e.g. 'Control').",
+                    "description": "Reference class of categorical dependent variable."
                 },
                 "dge_confounding_vars": {
                     "type": "string",
-                    "default": "cngeneson,seqdate,pc_mito"
+                    "default": "cngeneson,seqdate,pc_mito",
+                    "description": "Confounding variables.",
+                    "help_text": "A comma-separated list of confounding variables to account for in the DGE model."
                 },
                 "dge_random_effects_var": {
                     "type": "string",
-                    "default": "NULL"
+                    "default": "NULL",
+                    "description": "Random effect confounding variable.",
+                    "help_text": "If specified, the term `+ (1 | x ) +`is added to the model, where x is the specified random effects variable."
                 },
                 "dge_fc_threshold": {
                     "type": "number",
-                    "default": 1.1
+                    "default": 1.1,
+                    "description": "Fold-change threshold for plotting.",
+                    "help_text": "This absolute fold-change cut-off value is used in plots (e.g. volcano) and the DGE report."
                 },
                 "dge_pval_cutoff": {
                     "type": "number",
-                    "default": 0.05
+                    "default": 0.05,
+                    "description": "Adjusted p-value cutoff.",
+                    "help_text": "The adjusted p-value cutoff value is used in plots (e.g. volcano) and the DGE report."
                 },
                 "dge_force_run": {
-                    "type": "string"
+                    "type": "string",
+                    "default": "false",
+                    "description": "Force model fit for non-full rank.",
+                    "help_text": "A non-full rank model specification will return an error; to override this to return a warning only, set to TRUE."
+                },
+                "dge_max_cores": {
+                    "type": "string",
+                    "default": "'null'",
+                    "description": "Maximum CPU cores.",
+                    "help_text": "The default value of 'null' utilizes all available CPU cores.  As each additional CPU core increases the number of genes simultaneously fit, the RAM/memory demand increases concomitantly.  Manually overriding this parameter can reduce the memory demands of parallelization across multiple cores."
                 }
             },
-            "fa_icon": "fas fa-chart-bar"
+            "fa_icon": "fas fa-chart-bar",
+            "required": [
+                "dge_de_method",
+                "dge_mast_method",
+                "dge_min_counts",
+                "dge_min_cells_pc",
+                "dge_rescale_numerics",
+                "dge_pseudobulk",
+                "dge_celltype_var",
+                "dge_sample_var",
+                "dge_dependent_var",
+                "dge_ref_class",
+                "dge_confounding_vars",
+                "dge_random_effects_var",
+                "dge_fc_threshold",
+                "dge_pval_cutoff",
+                "dge_force_run",
+                "dge_max_cores"
+            ]
         },
         "impacted_pathway_analysis": {
             "title": "Impacted Pathway Analysis",
@@ -636,24 +1019,34 @@
             "description": "Parameters for impacted pathway analysis of differentially expressed genes.",
             "default": "",
             "properties": {
-                "ipa_reference_file": {
-                    "type": "string",
-                    "default": "NULL"
-                },
                 "ipa_enrichment_tool": {
                     "type": "string",
-                    "default": "WebGestaltR"
+                    "default": "WebGestaltR",
+                    "description": "Pathway enrichment tool(s) to use.",
+                    "enum": [
+                        "WebGestaltR",
+                        "ROntoTools",
+                        "enrichR"
+                    ]
                 },
                 "ipa_enrichment_method": {
                     "type": "string",
-                    "default": "ORA"
+                    "default": "ORA",
+                    "description": "Enrichment method."
                 },
                 "ipa_enrichment_database": {
                     "type": "string",
-                    "default": "GO_Biological_Process"
+                    "default": "GO_Biological_Process",
+                    "description": "Database(s) to use for enrichment.",
+                    "help_text": "See scFlow::list_databases().  Name of the database(s) for enrichment. Examples include \"GO_Biological_Process\", \"GO_Cellular_Component\", \"GO_Molecular_Function\", \"KEGG\", \"Reactome\", \"Wikipathway\"."
                 }
             },
-            "fa_icon": "fas fa-project-diagram"
+            "fa_icon": "fas fa-project-diagram",
+            "required": [
+                "ipa_enrichment_tool",
+                "ipa_enrichment_method",
+                "ipa_enrichment_database"
+            ]
         },
         "dirichlet_modeling": {
             "title": "Dirichlet Modeling",
@@ -663,26 +1056,39 @@
             "properties": {
                 "dirich_unique_id_var": {
                     "type": "string",
-                    "default": "individual"
+                    "default": "individual",
+                    "description": "Unique sampler identifier."
                 },
                 "dirich_celltype_var": {
                     "type": "string",
-                    "default": "cluster_celltype"
+                    "default": "cluster_celltype",
+                    "description": "Cell-type annotation variable name."
                 },
                 "dirich_dependent_var": {
                     "type": "string",
-                    "default": "group"
+                    "default": "group",
+                    "description": "Dependent variable of Dirichlet model."
                 },
                 "dirich_ref_class": {
                     "type": "string",
-                    "default": "Control"
+                    "default": "Control",
+                    "description": "Reference class of categorical dependent variable."
                 },
                 "dirich_var_order": {
                     "type": "string",
-                    "default": "Control,Low,High"
+                    "default": "Control,Low,High",
+                    "description": "Dependent variable classes order.",
+                    "help_text": "For plotting and reports, the order of classes for the dependent variable can be manually specified (e.g. 'Control,Low,High')."
                 }
             },
-            "fa_icon": "fas fa-chart-pie"
+            "fa_icon": "fas fa-chart-pie",
+            "required": [
+                "dirich_unique_id_var",
+                "dirich_celltype_var",
+                "dirich_dependent_var",
+                "dirich_ref_class",
+                "dirich_var_order"
+            ]
         },
         "general_plotting": {
             "title": "General - Plotting",
@@ -692,10 +1098,31 @@
             "properties": {
                 "plotreddim_reduction_methods": {
                     "type": "string",
-                    "default": "UMAP_Liger"
+                    "default": "UMAP_Liger",
+                    "description": "Preferred embedding for plots.",
+                    "fa_icon": "fas fa-hand-pointer"
+                },
+                "reddimplot_pointsize": {
+                    "type": "number",
+                    "description": "Point size for reduced dimension plots.",
+                    "default": 0.1,
+                    "help_text": "To improve visualization the point size should be adjusted according to the total number of cells plotted.",
+                    "fa_icon": "fas fa-expand-alt"
+                },
+                "reddimplot_alpha": {
+                    "type": "number",
+                    "description": "Alpha (transparency) value for reduced dimension plots.",
+                    "default": 0.2,
+                    "help_text": "To improve visualization the alpha (transparency) value should be adjusted according to the total number of cells plotted.",
+                    "fa_icon": "fas fa-braille"
                 }
             },
-            "fa_icon": "fas fa-chart-area"
+            "fa_icon": "fas fa-chart-area",
+            "required": [
+                "plotreddim_reduction_methods",
+                "reddimplot_pointsize",
+                "reddimplot_alpha"
+            ]
         },
         "generic_options": {
             "title": "Generic options",
@@ -710,19 +1137,36 @@
                     "hidden": true,
                     "fa_icon": "fas fa-question-circle"
                 },
-                "name": {
+                "publish_dir_mode": {
                     "type": "string",
-                    "description": "Workflow name.",
-                    "fa_icon": "fas fa-fingerprint",
+                    "default": "copy",
                     "hidden": true,
-                    "help_text": "A custom name for the pipeline run. Unlike the core nextflow `-name` option with one hyphen this parameter can be reused multiple times, for example if using `-resume`. Passed through to steps such as MultiQC and used for things like report filenames and titles."
+                    "description": "Method used to save pipeline results to output directory.",
+                    "help_text": "The Nextflow `publishDir` option specifies which intermediate files should be saved to the output directory. This option tells the pipeline what method should be used to move these files. See [Nextflow docs](https://www.nextflow.io/docs/latest/process.html#publishdir) for details.",
+                    "fa_icon": "fas fa-copy",
+                    "enum": [
+                        "symlink",
+                        "rellink",
+                        "link",
+                        "copy",
+                        "copyNoFollow",
+                        "move"
+                    ]
+                },
+                "validate_params": {
+                    "type": "boolean",
+                    "description": "Boolean whether to validate parameters against the schema at runtime",
+                    "default": true,
+                    "fa_icon": "fas fa-check-square",
+                    "hidden": true
                 },
                 "email": {
                     "type": "string",
                     "description": "Email address for completion summary.",
                     "fa_icon": "fas fa-envelope",
                     "help_text": "Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits. If set in your user config file (`~/.nextflow/config`) then you don't need to specify this on the command line for every run.",
-                    "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$"
+                    "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$",
+                    "hidden": true
                 },
                 "email_on_fail": {
                     "type": "string",
@@ -731,13 +1175,6 @@
                     "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$",
                     "hidden": true,
                     "help_text": "This works exactly as with `--email`, except emails are only sent if the workflow is not successful."
-                },
-                "plaintext_email": {
-                    "type": "boolean",
-                    "description": "Send plain-text email instead of HTML.",
-                    "fa_icon": "fas fa-remove-format",
-                    "hidden": true,
-                    "help_text": "Set to receive plain-text e-mails instead of HTML formatted."
                 },
                 "monochrome_logs": {
                     "type": "boolean",
@@ -752,6 +1189,48 @@
                     "default": "${params.outdir}/pipeline_info",
                     "fa_icon": "fas fa-cogs",
                     "hidden": true
+                },
+                "show_hidden_params": {
+                    "type": "boolean",
+                    "fa_icon": "far fa-eye-slash",
+                    "description": "Show all params when using `--help`",
+                    "hidden": true,
+                    "help_text": "By default, parameters set as _hidden_ in the schema are not shown on the command line when a user runs with `--help`. Specifying this option will tell the pipeline to show all parameters."
+                }
+            }
+        },
+        "max_job_request_options": {
+            "title": "Max job request options",
+            "type": "object",
+            "fa_icon": "fab fa-acquisitions-incorporated",
+            "description": "Set the top limit for requested resources for any single job.",
+            "help_text": "If you are running on a smaller system, a pipeline step requesting more resources than are available may cause the Nextflow to stop the run with an error. These options allow you to cap the maximum resources requested by any single job so that the pipeline will run on your system.\n\nNote that you can not _increase_ the resources requested by any job using these options. For that you will need your own configuration file. See [the nf-core website](https://nf-co.re/usage/configuration) for details.",
+            "properties": {
+                "max_cpus": {
+                    "type": "integer",
+                    "description": "Maximum number of CPUs that can be requested    for any single job.",
+                    "default": 16,
+                    "fa_icon": "fas fa-microchip",
+                    "hidden": true,
+                    "help_text": "Use to set an upper-limit for the CPU requirement for each process. Should be an integer e.g. `--max_cpus 1`"
+                },
+                "max_memory": {
+                    "type": "string",
+                    "description": "Maximum amount of memory that can be requested for any single job.",
+                    "default": "256.GB",
+                    "fa_icon": "fas fa-memory",
+                    "pattern": "^\\d+(\\.\\d+)?\\.?\\s*(K|M|G|T)?B$",
+                    "hidden": true,
+                    "help_text": "Use to set an upper-limit for the memory requirement for each process. Should be a string in the format integer-unit e.g. `--max_memory '8.GB'`"
+                },
+                "max_time": {
+                    "type": "string",
+                    "description": "Maximum amount of time that can be requested for any single job.",
+                    "default": "240.h",
+                    "fa_icon": "far fa-clock",
+                    "pattern": "^(\\d+\\.?\\s*(s|m|h|day)\\s*)+$",
+                    "hidden": true,
+                    "help_text": "Use to set an upper-limit for the time requirement for each process. Should be a string in the format integer-unit e.g. `--max_time '2.h'`"
                 }
             }
         },
@@ -784,6 +1263,12 @@
                     "hidden": true,
                     "fa_icon": "fas fa-users-cog"
                 },
+                "config_profile_name": {
+                    "type": "string",
+                    "description": "Institutional config name.",
+                    "hidden": true,
+                    "fa_icon": "fas fa-users-cog"
+                },
                 "config_profile_description": {
                     "type": "string",
                     "description": "Institutional config description.",
@@ -804,36 +1289,22 @@
                 }
             }
         },
-        "max_job_request_options": {
-            "title": "Max job request options",
+        "nextflow_configuration": {
+            "title": "NextFlow Configuration",
             "type": "object",
-            "fa_icon": "fab fa-acquisitions-incorporated",
-            "description": "Set the top limit for requested resources for any single job.",
-            "help_text": "If you are running on a smaller system, a pipeline step requesting more resources than are available may cause the Nextflow to stop the run with an error. These options allow you to cap the maximum resources requested by any single job so that the pipeline will run on your system.\n\nNote that you can not _increase_ the resources requested by any job using these options. For that you will need your own configuration file. See [the nf-core website](https://nf-co.re/usage/configuration) for details.",
+            "description": "General NextFlow config.",
+            "default": "",
+            "fa_icon": "fab fa-stack-overflow",
             "properties": {
-                "max_cpus": {
-                    "type": "integer",
-                    "description": "Maximum number of CPUs that can be requested    for any single job.",
-                    "default": 16,
-                    "fa_icon": "fas fa-microchip",
-                    "hidden": true,
-                    "help_text": "Use to set an upper-limit for the CPU requirement for each process. Should be an integer e.g. `--max_cpus 1`"
-                },
-                "max_memory": {
+                "outdir": {
                     "type": "string",
-                    "description": "Maximum amount of memory that can be requested for any single job.",
-                    "default": "128.GB",
-                    "fa_icon": "fas fa-memory",
-                    "hidden": true,
-                    "help_text": "Use to set an upper-limit for the memory requirement for each process. Should be a string in the format integer-unit e.g. `--max_memory '8.GB'`"
+                    "default": "./results",
+                    "description": "Outputs directory."
                 },
-                "max_time": {
+                "options": {
                     "type": "string",
-                    "description": "Maximum amount of time that can be requested for any single job.",
-                    "default": "240.h",
-                    "fa_icon": "far fa-clock",
                     "hidden": true,
-                    "help_text": "Use to set an upper-limit for the time requirement for each process. Should be a string in the format integer-unit e.g. `--max_time '2.h'`"
+                    "description": "NA."
                 }
             }
         }
@@ -882,10 +1353,13 @@
             "$ref": "#/definitions/generic_options"
         },
         {
+            "$ref": "#/definitions/max_job_request_options"
+        },
+        {
             "$ref": "#/definitions/institutional_config_options"
         },
         {
-            "$ref": "#/definitions/max_job_request_options"
+            "$ref": "#/definitions/nextflow_configuration"
         }
     ]
 }

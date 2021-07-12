@@ -1,5 +1,5 @@
 #!/usr/bin/env nextflow
-nextflow.preview.dsl=2
+nextflow.enable.dsl=2
 
 /*
 ========================================================================================
@@ -15,7 +15,6 @@ include { getSoftwareName;initOptions;getPathFromList;saveFiles } from './module
 params.options = [:]
 
 def helpMessage() {
-    // TODO nf-core: Add to this help message with new command line parameters
     log.info nfcoreHeader()
     log.info"""
 
@@ -23,19 +22,19 @@ def helpMessage() {
 
     The typical command for running the pipeline is as follows:
 
-    nextflow run nf-core/scflow --manifest "refs/Manifest.txt" --samplesheet "refs/SampleSheet.tsv" -params-file conf/nfx-params.json
+    nextflow run nf-core/scflow --input "refs/Manifest.txt" --samplesheet "refs/SampleSheet.tsv" -c "conf/scflow_params.config"
 
     Mandatory arguments:
-      --manifest [file]             Path to Manifest.txt file (must be surrounded with quotes)
+      --input [file]                Path to Manifest.txt file (must be surrounded with quotes)
       --samplesheet [file]          Path to SampleSheet.tsv file (must be surrounded with quotes)
-      -params-file [file]           Path to nfx-params.json file
       -profile [str]                Configuration profile to use. Can use multiple (comma separated)
                                     Available: conda, docker, singularity, test, awsbatch, <institute> and more
-                                    TODO: This feature will be available when configs are submitted to nf-core
 
     References                        If not specified in the configuration file or you wish to overwrite any of the references
       --ensembl_mappings [file]       Path to ensembl_mappings file
-      --ctd_folder [path]             Path to the folder containing .ctd files for celltype annotation
+      --celltype_mappings [file]      Path to manual cell-type mappings file
+      --ctd_path [file]               Path to the zip file containing .ctd files for celltype annotation
+      --reddim_genes_yml [file]       Path to a file containing genes of interest for expression plotting
 
     Other options:
       --outdir [file]                 The output directory where the results will be saved
@@ -49,63 +48,84 @@ def helpMessage() {
       --awscli [str]                  Path to the AWS CLI tool
     """.stripIndent()
 }
+log.info Headers.nf_core(workflow, params.monochrome_logs)
 
-// Show help message
+////////////////////////////////////////////////////
+/* --               PRINT HELP                 -- */
+////////////////////////////////////////////////////+
+def json_schema = "$projectDir/nextflow_schema.json"
 if (params.help) {
-    helpMessage()
+    def command = "nextflow run nf-core/scflow --input '*_R{1,2}.fastq.gz' -profile docker"
+    log.info NfcoreSchema.params_help(workflow, params, json_schema, command)
     exit 0
 }
 
-/*
- * SET UP CONFIGURATION VARIABLES
- */
+////////////////////////////////////////////////////
+/* --         VALIDATE PARAMETERS              -- */
+////////////////////////////////////////////////////+
+if (params.validate_params) {
+    NfcoreSchema.validateParameters(params, json_schema, log)
+}
+
+////////////////////////////////////////////////////
+/* --     Collect configuration parameters     -- */
+////////////////////////////////////////////////////
 
 // Has the run name been specified by the user?
 // this has the bonus effect of catching both -name and --name
+/*
 custom_runName = params.name
 if (!(workflow.runName ==~ /[a-z]+_[a-z]+/)) {
     custom_runName = workflow.runName
 }
+*/
 
 // Check AWS batch settings
 if (workflow.profile.contains('awsbatch')) {
     // AWSBatch sanity checking
-    if (!params.awsqueue || !params.awsregion) exit 1, "Specify correct --awsqueue and --awsregion parameters on AWSBatch!"
+    if (!params.awsqueue || !params.awsregion) exit 1, 'Specify correct --awsqueue and --awsregion parameters on AWSBatch!'
     // Check outdir paths to be S3 buckets if running on AWSBatch
     // related: https://github.com/nextflow-io/nextflow/issues/813
-    if (!params.outdir.startsWith('s3:')) exit 1, "Outdir not on S3 - specify S3 Bucket to run on AWSBatch!"
+    if (!params.outdir.startsWith('s3:')) exit 1, 'Outdir not on S3 - specify S3 Bucket to run on AWSBatch!'
     // Prevent trace files to be stored on S3 since S3 does not support rolling files.
-    if (params.tracedir.startsWith('s3:')) exit 1, "Specify a local tracedir or run without trace! S3 cannot be used for tracefiles."
+    if (params.tracedir.startsWith('s3:')) exit 1, 'Specify a local tracedir or run without trace! S3 cannot be used for tracefiles.'
 }
 
 /*
  * Create a channel for input read files
  */
- if (params.manifest) { ch_manifest = file(params.manifest, checkIfExists: true) }
+ if (params.input) { ch_input = file(params.input, checkIfExists: true) }
  if (params.samplesheet) { ch_samplesheet = file(params.samplesheet, checkIfExists: true) }
  if (params.samplesheet) { ch_samplesheet2 = file(params.samplesheet, checkIfExists: true) } // copy for qc
- if (params.ctd_folder) { ch_ctd_folder = file(params.ctd_folder, checkIfExists: true) }
+ if (params.ctd_path) { ch_ctd_path = file(params.ctd_path, checkIfExists: true) }
  if (params.celltype_mappings) { ch_celltype_mappings = file(params.celltype_mappings, checkIfExists: false) }
  if (params.ensembl_mappings) { ch_ensembl_mappings = file(params.ensembl_mappings, checkIfExists: false) }
  if (params.ensembl_mappings) { ch_ensembl_mappings2 = file(params.ensembl_mappings, checkIfExists: false) }
  if (params.ensembl_mappings) { ch_ensembl_mappings3 = file(params.ensembl_mappings, checkIfExists: false) }
- if (params.reddim_genes_yml) { ch_reddim_genes_yml = file(params.reddim_genes_yml, checkIfExists: false) }
+ if (params.reddim_genes_yml) { ch_reddim_genes_yml = file(params.reddim_genes_yml, checkIfExists: true) }
+
+////////////////////////////////////////////////////
+/* --         PRINT PARAMETER SUMMARY          -- */
+////////////////////////////////////////////////////
+log.info NfcoreSchema.params_summary_log(workflow, params, json_schema)
 
 // Header log info
-log.info nfcoreHeader()
 def summary = [:]
 if (workflow.revision) summary['Pipeline Release'] = workflow.revision
-summary['Run Name']         = custom_runName ?: workflow.runName
-summary['Manifest']         = params.manifest
+//summary['Run Name']       = custom_runName ?: workflow.runName
+summary['Run Name']         = workflow.runName
+summary['Input']            = params.input
 summary['SampleSheet']      = params.samplesheet
 summary['Run EmptyDrops']   = params.amb_find_cells ? "Yes" : "No"
-summary['Find Singlets']    = params.mult_find_singlets ? "Yes ($params.singlets.singlets_method)" : 'No'
+summary['Find Singlets']    = params.mult_find_singlets ? "Yes ($params.mult_singlets_method)" : 'No'
 summary['Dimension Reds.']  = params.reddim_reduction_methods
 summary['Clustering Input'] = params.clust_reduction_method
 summary['DGE Method']       = params.dge_de_method == "MASTZLM" ? "$params.dge_de_method ($params.dge_mast_method)": "$params.dge_de_method"
 summary['DGE Dependent Var']= params.dge_dependent_var
 summary['DGE Ref Class']    = params.dge_ref_class
 summary['DGE Confound Vars']= params.dge_confounding_vars
+summary['Run Name']         = workflow.runName
+
 summary['Max Resources']    = "$params.max_memory memory, $params.max_cpus cpus, $params.max_time time per job"
 if (workflow.containerEngine) summary['Container'] = "$workflow.containerEngine - $workflow.container"
 summary['Output dir']       = params.outdir
@@ -128,8 +148,6 @@ if (params.email || params.email_on_fail) {
     summary['E-mail on failure'] = params.email_on_fail
     summary['MultiQC maxsize']   = params.max_multiqc_email_size
 }
-log.info summary.collect { k,v -> "${k.padRight(18)}: $v" }.join("\n")
-log.info "-\033[2m--------------------------------------------------\033[0m-"
 
 // Check the hostnames against configured profiles
 checkHostname()
@@ -156,16 +174,15 @@ Channel.from(summary.collect{ [it.key, it.value] })
 process get_software_versions {
     publishDir "${params.outdir}/pipeline_info", mode: params.publish_dir_mode,
         saveAs: { filename ->
-                      if (filename.indexOf(".csv") > 0) filename
+                      if (filename.indexOf('.csv') > 0) filename
                       else null
-                }
+        }
 
     output:
     file 'software_versions_mqc.yaml' into ch_software_versions_yaml
-    file "software_versions.csv"
+    file 'software_versions.csv'
 
     script:
-    // TODO nf-core: Get all tools to print their version number here
     """
     echo $workflow.manifest.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
@@ -174,72 +191,20 @@ process get_software_versions {
     """
 }
 
-/*
- * Check manifest and samplesheet inputs are valid
- */
- process SCFLOW_CHECK_INPUTS {
+////////////////////////////////////////////////////
+/* --    IMPORT LOCAL MODULES/SUBWORKFLOWS     -- */
+////////////////////////////////////////////////////
 
-  tag 'SCFLOW_CHECK_INPUTS'
-  label 'process_tiny'
-  //container 'google/cloud-sdk:alpine'
+// Don't overwrite global params.modules, create a copy instead and use that within the main script.
+def modules = params.modules.clone()
 
-  echo true
+def scflow_checkinputs_options         = modules['scflow_checkinputs']
+scflow_checkinputs_options.args        = ''
 
-  input:
-    path manifest
-    path samplesheet
-
-  output:
-    path 'checked_manifest.txt', emit: checked_manifest
-
-  script:
-
-    """
-    check_inputs.r \
-    --samplesheet $samplesheet \
-    --manifest $manifest    
-    """     
-
-}
-
-/*
- * Single Sample QC
- */
-process SCFLOW_QC {
-
-  tag "${key}"
-  label 'process_low'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
-
-  errorStrategy { task.attempt <= 3 ? 'retry' : 'finish' }
-  maxRetries 3
-   
-  echo false
-   
-  input:
-    tuple val(key), path(mat_path)
-    path samplesheet
-    path ensembl_mappings
-
-  output:
-    path 'qc_report/*.html'     , emit: qc_report
-    path 'qc_plot_data/*.tsv'   , emit: qc_plot_data
-    path 'qc_summary/*.tsv'     , emit: qc_summary
-    path 'qc_plots/*.png'       , emit: qc_plots
-    path '*_sce'                , emit: qc_sce
-
-  script:
-    """
-    scflow_qc.r \
-    --samplesheet ${samplesheet} \
-    --mat_path ${mat_path} \
-    --key ${key} \
-    --key_colname ${params.qc_key_colname} \
+def scflow_qc_options                  = modules['scflow_qc']
+scflow_qc_options.args                 = 
+    "--key_colname ${params.qc_key_colname} \
     --factor_vars ${params.qc_factor_vars} \
-    --ensembl_mappings ${ensembl_mappings} \
     --min_library_size ${params.qc_min_library_size} \
     --max_library_size ${params.qc_max_library_size} \
     --min_features ${params.qc_min_features} \
@@ -259,106 +224,30 @@ process SCFLOW_QC {
     --pca_dims ${params.mult_pca_dims} \
     --var_features ${params.mult_var_features} \
     --doublet_rate ${params.mult_doublet_rate} \
+    --dpk ${params.mult_dpk} \
     --pK ${params.mult_pK} \
     --find_cells ${params.amb_find_cells} \
     --lower ${params.amb_lower} \
     --retain ${params.amb_retain} \
     --alpha_cutoff ${params.amb_alpha_cutoff} \
     --niters ${params.amb_niters}  \
-    --expect_cells ${params.amb_expect_cells}
-     
-    """
-}
+    --expect_cells ${params.amb_expect_cells} \
+    --species ${params.species} "
 
-/*
- * Merge individual quality-control tsv summaries into combined tsv file
- */
-process SCFLOW_MERGE_QC_SUMMARIES {
-  
-  tag 'merged'
-  label 'process_tiny'
+def scflow_mergeqctables_options  = modules['scflow_mergeqctables']
+scflow_mergeqctables_options.args = ''
 
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
-
-  input:
-    path qcs_tsv
-
-  output:
-    path '*.tsv', emit: qc_summary
-
-  script:
-    """
-
-    merge_tables.r \
-    --filepaths ${qcs_tsv.join(',')}
-
-    """
-
-}
-
-/*
- * Merge quality-control passed SCEs
- */
-process SCFLOW_MERGE {
-  
-  tag 'merged'
-  label 'process_medium'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
-
-  input:
-    path qc_passed_sces
-    path ensembl_mappings
-
-  output:
-    path 'merged_sce/'              , emit: merged_sce
-    path 'merge_plots/*.png'        , emit: merge_plots
-    path 'merge_summary_plots/*.png', emit: merge_summary_plots    
-    path 'merged_report/*.html'     , emit: merged_report
-
-  script:
-    """
-
-    scflow_merge.r \
-    --sce_paths ${qc_passed_sces.join(',')} \
-    --ensembl_mappings ${ensembl_mappings} \
-    --unique_id_var ${params.qc_key_colname} \
+def scflow_merge_options             = modules['scflow_merge']
+scflow_merge_options.args            =
+    "--unique_id_var ${params.qc_key_colname} \
     --plot_vars ${params.merge_plot_vars} \
     --facet_vars ${params.merge_facet_vars} \
-    --outlier_vars ${params.merge_outlier_vars}
+    --outlier_vars ${params.merge_outlier_vars} \
+    --species ${params.species}"
 
-    """
-
-}
-
-/*
- * Integrate data for batch-effect correction
- */
-process SCFLOW_INTEGRATE {
-
-  tag 'merged'
-  label 'process_medium'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
-
-  input:
-    path sce
-
-  output:
-    path 'integrated_sce/', emit: integrated_sce
-
-  script:
-    """
-
-    scflow_integrate.r \
-    --sce_path ${sce} \
-    --method ${params.integ_method} \
+def scflow_integrate_options         = modules['scflow_integrate']
+scflow_integrate_options.args        =
+    "--method ${params.integ_method} \
     --unique_id_var ${params.integ_unique_id_var} \
     --take_gene_union ${params.integ_take_gene_union} \
     --remove_missing ${params.integ_remove_missing} \
@@ -384,37 +273,13 @@ process SCFLOW_INTEGRATE {
     --dims_use ${params.integ_dims_use} \
     --dist_use ${params.integ_dist_use} \
     --center ${params.integ_center} \
-    --small_clust_thresh ${params.integ_small_clust_thresh}
-    
-    """
+    --small_clust_thresh ${params.integ_small_clust_thresh} \
+    --reddimplot_pointsize ${params.reddimplot_pointsize} \
+    --reddimplot_alpha ${params.reddimplot_alpha}"
 
-}
-
-/*
- * Perform dimensionality reduction
- */
-process SCFLOW_REDUCE_DIMS {
-  
-  tag 'merged'
-  label 'process_medium'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
-
-
-  input:
-    path sce
-
-  output:
-    path 'reddim_sce/', emit: reddim_sce
-
-  script:
-    """
-
-    scflow_reduce_dims.r \
-    --sce_path ${sce} \
-    --input_reduced_dim ${params.reddim_input_reduced_dim} \
+def scflow_reducedims_options        = modules['scflow_reducedims']
+scflow_reducedims_options.args       = 
+    "--input_reduced_dim ${params.reddim_input_reduced_dim} \
     --reduction_methods ${params.reddim_reduction_methods} \
     --vars_to_regress_out ${params.reddim_vars_to_regress_out} \
     --pca_dims ${params.reddim_umap_pca_dims} \
@@ -444,220 +309,51 @@ process SCFLOW_REDUCE_DIMS {
     --momentum ${params.reddim_tsne_momentum} \
     --final_momentum ${params.reddim_tsne_final_momentum} \
     --eta ${params.reddim_tsne_eta} \
-    --exaggeration_factor ${params.reddim_tsne_exaggeration_factor}
-    
+    --exaggeration_factor ${params.reddim_tsne_exaggeration_factor}"
 
-    """
-
-}
-
-/*
- * Cluster cells
- */
-process SCFLOW_CLUSTER {
-  
-  tag 'merged'
-  label 'process_low'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
-
-
-  input:
-    path sce
-
-  output:
-    path 'clustered_sce/'       , emit: clustered_sce
-
-  script:
-    """
-
-    scflow_cluster.r \
-    --sce_path ${sce} \
-    --cluster_method ${params.clust_cluster_method} \
+def scflow_cluster_options          = modules['scflow_cluster']
+scflow_cluster_options.args         =
+    "--cluster_method ${params.clust_cluster_method} \
     --reduction_method ${params.clust_reduction_method} \
     --res ${params.clust_res} \
     --k ${params.clust_k} \
-    --louvain_iter ${params.clust_louvain_iter}
+    --louvain_iter ${params.clust_louvain_iter}"
 
-    """
-
-}
-
-
-/*
- * Generate integration report
- */
-process SCFLOW_REPORT_INTEGRATED {
-  
-  tag "merged"
-  label 'process_medium'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
-
-  input:
-    path( sce )
-
-  output:
-    path 'integration_report/', emit: integration_report
-
-  script:
-    """
-    scflow_report_integrated.r \
-    --sce_path ${sce} \
-    --categorical_covariates ${params.integ_categorical_covariates} \
-    --input_reduced_dim ${params.integ_input_reduced_dim}
-    """
-
-}
+def scflow_reportintegrated_options  = modules['scflow_reportintegrated']
+scflow_reportintegrated_options.args =
+   "--categorical_covariates ${params.integ_categorical_covariates} \
+    --input_reduced_dim ${params.integ_input_reduced_dim} \
+    --reddimplot_pointsize ${params.reddimplot_pointsize} \
+    --reddimplot_alpha ${params.reddimplot_alpha}"
 
 
-/*
- * Annotate cluster celltypes
- */
-process SCFLOW_MAP_CELLTYPES {
-  
-  tag 'merged'
-  label 'process_low'
+def scflow_mapcelltypes_options      = modules['scflow_mapcelltypes']
+scflow_mapcelltypes_options.args     =
+    "--clusters_colname ${params.cta_clusters_colname} \
+    --cells_to_sample ${params.cta_cells_to_sample} \
+    --species ${params.species} \
+    --reddimplot_pointsize ${params.reddimplot_pointsize} \
+    --reddimplot_alpha ${params.reddimplot_alpha}"
 
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
+def scflow_finalize_options          = modules['scflow_finalize']
+scflow_finalize_options.args         =
+    "--clusters_colname ${params.cta_clusters_colname} \
+     --celltype_var ${params.cta_celltype_var} \
+     --unique_id_var ${params.cta_unique_id_var} \
+     --facet_vars ${params.cta_facet_vars} \
+     --input_reduced_dim ${params.clust_reduction_method} \
+     --metric_vars ${params.cta_metric_vars}"
 
-
-  input:
-    path sce
-    path ctd_folder
-
-  output:
-    path 'celltype_mapped_sce/' , emit: celltype_mapped_sce
-    path 'celltype_mappings.tsv', emit: celltype_mappings
-
-  script:
-    """
-
-    scflow_map_celltypes.r \
-    --sce_path ${sce} \
-    --ctd_folder ${ctd_folder} \
-    --clusters_colname ${params.cta_clusters_colname} \
-    --cells_to_sample ${params.cta_cells_to_sample}
-
-    """
-
-}
-
-/*
- * Generate final SCE with optionally revised cell-types
- */
-process SCFLOW_FINALIZE {
-
-  tag 'merged'
-  label  'process_high'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
+def scflow_plotreddimgenes_options          = modules['scflow_plotreddimgenes']
+scflow_plotreddimgenes_options.args          =
+    "--reduction_methods ${params.plotreddim_reduction_methods} \
+    --reddimplot_pointsize ${params.reddimplot_pointsize} \
+    --reddimplot_alpha ${params.reddimplot_alpha}"
 
 
-  echo true
-  
-  input:
-    path sce
-    path celltype_mappings
-
-  output:
-    path 'final_sce/'               , emit: final_sce
-    path 'celltypes.tsv'            , emit: celltypes
-    path 'celltype_metrics_report'  , emit: celltype_metrics_report
-
-
-  script:
-
-      """
-      scflow_finalize_sce.r \
-      --sce_path ${sce} \
-      --celltype_mappings ${celltype_mappings} \
-      --clusters_colname ${params.cta_clusters_colname} \
-      --celltype_var ${params.cta_celltype_var} \
-      --unique_id_var ${params.cta_unique_id_var} \
-      --facet_vars ${params.cta_facet_vars} \
-      --input_reduced_dim ${params.clust_reduction_method} \
-      --metric_vars ${params.cta_metric_vars}
-      """
-
-}
-
-/*
- * Generate 2D reduced dimension plots of gene expression
- */
-process SCFLOW_PLOT_REDDIM_GENES {
-
-  label 'process_low'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
-
-   
-  input:
-    path sce
-    path reddim_genes_yml
-
-  output:
-    path 'reddim_gene_plots/', emit: reddim_gene_plots
-
-  script:
-    
-    """
-    scflow_plot_reddim_genes.r \
-    --sce ${sce} \
-    --reduction_methods ${params.plotreddim_reduction_methods} \
-    --reddim_genes_yml ${reddim_genes_yml}
-     
-    """
-}
-
-/*
- * Perform differential gene expression
- */
-process SCFLOW_DGE {
-
-  tag "${celltype} (${n_cells_str} cells) | ${de_method}"
-  label 'process_medium'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
-
-  maxRetries 3
-   
-  input:
-    path sce
-    each de_method
-    each ct_tuple
-    path ensembl_mappings
-
-  output:
-    path 'de_table/*.tsv'       , emit: de_table, optional: true
-    path 'de_report/*.html'     , emit: de_report
-    path 'de_plot/*.png'        , emit: de_plot
-    path 'de_plot_data/*.tsv'   , emit: de_plot_data
-
-  script:
-    celltype    = ct_tuple[0]
-    n_cells     = ct_tuple[1].toInteger()
-    n_cells_str = (Math.round(n_cells * 100) / 100000).round(1).toString() + 'k'
-
-    """
-    echo "celltype: ${celltype} n_cells: ${n_cells_str}"
-    scflow_dge.r \
-    --sce ${sce} \
-    --celltype ${celltype} \
-    --de_method ${de_method} \
-    --mast_method ${params.dge_mast_method} \
+def scflow_dge_options               = modules['scflow_dge']
+scflow_dge_options.args              =
+    "--mast_method ${params.dge_mast_method} \
     --min_counts ${params.dge_min_counts} \
     --min_cells_pc ${params.dge_min_cells_pc} \
     --rescale_numerics ${params.dge_rescale_numerics} \
@@ -669,90 +365,51 @@ process SCFLOW_DGE {
     --ref_class ${params.dge_ref_class} \
     --confounding_vars ${params.dge_confounding_vars} \
     --random_effects_var ${params.dge_random_effects_var} \
+    --pval_cutoff ${params.dge_pval_cutoff} \
     --fc_threshold ${params.dge_fc_threshold} \
-    --ensembl_mappings ${ensembl_mappings} 
-     
-    """
-}
+    --species ${params.species} \
+    --max_cores ${params.dge_max_cores}"
 
-/*
- * Integrated pathway analysis of differentially expressed genes
- */
-process SCFLOW_IPA {
-
-  label 'process_low'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
-
-   
-  input:
-    path de_table
-    //each de_method
-    //each celltype
-
-  output:
-    path 'ipa/**/*'     , emit: ipa_results , optional: true, type: 'dir'
-    path 'ipa/*.html'   , emit: ipa_report  , optional: true
-
-  script:
-    """
-    scflow_ipa.r \
-    --gene_file ${de_table.join(',')} \
-    --reference_file ${params.ipa_reference_file} \
-    --enrichment_tool ${params.ipa_enrichment_tool} \
+def scflow_ipa_options               = modules['scflow_ipa']
+scflow_ipa_options.args              =
+    "--enrichment_tool ${params.ipa_enrichment_tool} \
     --enrichment_method ${params.ipa_enrichment_method} \
-    --enrichment_database ${params.ipa_enrichment_database}
-     
-    """
-}
+    --enrichment_database ${params.ipa_enrichment_database}"
 
-/*
- * Dirichlet modeling of relative cell-type abundance
- */
-process SCFLOW_DIRICHLET {
-
-  tag "merged"
-  label  'process_low'
-
-  publishDir "${params.outdir}",
-    mode: params.publish_dir_mode,
-    saveAs: { filename -> saveFiles(filename:filename, options:params.options, publish_dir:getSoftwareName(task.process), publish_id:'') }
+def scflow_dirichlet_options         = modules['scflow_dirichlet']
+scflow_dirichlet_options.args = 
+    "--unique_id_var ${params.dirich_unique_id_var} \
+    --celltype_var ${params.dirich_celltype_var} \
+    --dependent_var ${params.dirich_dependent_var} \
+    --ref_class ${params.dirich_ref_class} \
+    --var_order ${params.dirich_var_order}"
 
 
-  echo true
-  
-  input:
-    path sce
-
-  output:
-    path 'dirichlet_report', emit: dirichlet_report
-
-  script:
-      """
-      scflow_dirichlet.r \
-      --sce_path ${sce} \
-      --unique_id_var ${params.dirich_unique_id_var} \
-      --celltype_var ${params.dirich_celltype_var} \
-      --dependent_var ${params.dirich_dependent_var} \
-      --ref_class ${params.dirich_ref_class} \
-      --var_order ${params.dirich_var_order} 
-      """
-
-}
-
+include { SCFLOW_CHECKINPUTS         } from './modules/local/process/scflow/checkinputs'       addParams( options: scflow_checkinputs_options       ) 
+include { SCFLOW_QC                  } from './modules/local/process/scflow/qc'                addParams( options: scflow_qc_options                )
+include { SCFLOW_MERGEQCTABLES       } from './modules/local/process/scflow/mergeqctables'     addParams( options: scflow_mergeqctables_options  )
+include { SCFLOW_MERGE               } from './modules/local/process/scflow/merge'             addParams( options: scflow_merge_options             )
+include { SCFLOW_INTEGRATE           } from './modules/local/process/scflow/integrate'         addParams( options: scflow_integrate_options         )
+include { SCFLOW_REDUCEDIMS          } from './modules/local/process/scflow/reducedims'        addParams( options: scflow_reducedims_options        )
+include { SCFLOW_CLUSTER             } from './modules/local/process/scflow/cluster'           addParams( options: scflow_cluster_options           )
+include { SCFLOW_REPORTINTEGRATED    } from './modules/local/process/scflow/reportintegrated'  addParams( options: scflow_reportintegrated_options  )
+include { SCFLOW_MAPCELLTYPES        } from './modules/local/process/scflow/mapcelltypes'      addParams( options: scflow_mapcelltypes_options      )
+include { SCFLOW_FINALIZE            } from './modules/local/process/scflow/finalize'          addParams( options: scflow_finalize_options          )
+include { SCFLOW_PLOTREDDIMGENES     } from './modules/local/process/scflow/plotreddimgenes'   addParams( options: scflow_plotreddimgenes_options   )
+include { SCFLOW_DGE                 } from './modules/local/process/scflow/dge'               addParams( options: scflow_dge_options               )
+include { SCFLOW_IPA                 } from './modules/local/process/scflow/ipa'               addParams( options: scflow_ipa_options               )
+include { SCFLOW_DIRICHLET           } from './modules/local/process/scflow/dirichlet'         addParams( options: scflow_dirichlet_options         )
 
 workflow {  
     
   main:
-    SCFLOW_CHECK_INPUTS ( 
-        ch_manifest, 
+    SCFLOW_CHECKINPUTS ( 
+        ch_input, 
         ch_samplesheet
     )
 
     SCFLOW_QC ( 
-        SCFLOW_CHECK_INPUTS.out.checked_manifest.splitCsv(
+        SCFLOW_CHECKINPUTS.out.checked_input.splitCsv(
             header:['key', 'filepath'], 
             skip: 1, sep: '\t'
             )
@@ -761,7 +418,7 @@ workflow {
         ch_ensembl_mappings
     )
     
-    SCFLOW_MERGE_QC_SUMMARIES ( 
+    SCFLOW_MERGEQCTABLES ( 
         SCFLOW_QC.out.qc_summary.collect() 
     )
     
@@ -774,25 +431,26 @@ workflow {
         SCFLOW_MERGE.out.merged_sce 
     )
 
-    SCFLOW_REDUCE_DIMS ( 
+
+    SCFLOW_REDUCEDIMS ( 
         SCFLOW_INTEGRATE.out.integrated_sce 
     )
     
     SCFLOW_CLUSTER ( 
-        SCFLOW_REDUCE_DIMS.out.reddim_sce 
+        SCFLOW_REDUCEDIMS.out.reddim_sce 
     )
 
-    SCFLOW_REPORT_INTEGRATED (
+    SCFLOW_REPORTINTEGRATED (
         SCFLOW_CLUSTER.out.clustered_sce
     )
 
-    SCFLOW_MAP_CELLTYPES ( 
+    SCFLOW_MAPCELLTYPES ( 
         SCFLOW_CLUSTER.out.clustered_sce, 
-        ch_ctd_folder 
+        ch_ctd_path 
     )
 
     SCFLOW_FINALIZE ( 
-        SCFLOW_MAP_CELLTYPES.out.celltype_mapped_sce, 
+        SCFLOW_MAPCELLTYPES.out.celltype_mapped_sce, 
         ch_celltype_mappings 
     )
 
@@ -814,14 +472,15 @@ workflow {
         SCFLOW_FINALIZE.out.final_sce 
     )
 
-    SCFLOW_PLOT_REDDIM_GENES ( 
+    SCFLOW_PLOTREDDIMGENES ( 
         SCFLOW_CLUSTER.out.clustered_sce, 
         ch_reddim_genes_yml
     )
+}
 
   /*
   publish:
-    SCFLOW_CHECK_INPUTS.out.checked_manifest to: "$params.outdir/", mode: 'copy', overwrite: 'true'
+    SCFLOW_CHECK_INPUTS.out.checked_input to: "$params.outdir/", mode: 'copy', overwrite: 'true'
     // Quality-control
     SCFLOW_QC.out.qc_report to: "$params.outdir/Reports/", mode: 'copy', overwrite: 'true'
     SCFLOW_QC.out.qc_plot_data to: "$params.outdir/Tables/Quality_Control/", mode: 'copy', overwrite: 'true'
@@ -841,10 +500,10 @@ workflow {
     SCFLOW_FINALIZE.out.celltypes to: "$params.outdir/Tables/Celltype_Mappings", mode: 'copy', overwrite: 'true'
     SCFLOW_FINALIZE.out.celltype_metrics_report to: "$params.outdir/Reports/", mode: 'copy', overwrite: 'true'
     // DE
-    SCFLOW_DGE.out.de_table to: "$params.outdir/Tables/DGE", mode: 'copy', optional: true, overwrite: 'true'
-    SCFLOW_DGE.out.de_report to: "$params.outdir/Reports/", mode: 'copy', overwrite: 'true'
-    SCFLOW_DGE.out.de_plot to: "$params.outdir/Plots/DGE/", mode: 'copy', overwrite: 'true'
-    SCFLOW_DGE.out.de_plot_data to: "$params.outdir/Tables/DGE", mode: 'copy', overwrite: 'true'
+    SCFLOW_DGE.out.de_table to: "$params.outdir/Tables/DGE", mode: 'copy', optional: 'true', overwrite: 'true'
+    SCFLOW_DGE.out.de_report to: "$params.outdir/Reports/", mode: 'copy', optional: 'true', overwrite: 'true'
+    SCFLOW_DGE.out.de_plot to: "$params.outdir/Plots/DGE/", mode: 'copy', optional: 'true', overwrite: 'true'
+    SCFLOW_DGE.out.de_plot_data to: "$params.outdir/Tables/DGE", mode: 'copy', optional: 'true', overwrite: 'true'
     // IPA
     SCFLOW_IPA.out.ipa_results to: "$params.outdir/Tables/", mode: 'copy', optional: true, overwrite: 'true'
     SCFLOW_IPA.out.ipa_report to: "$params.outdir/Reports/", mode: 'copy', optional: true, overwrite: 'true'
@@ -852,9 +511,7 @@ workflow {
     SCFLOW_DIRICHLET.out.dirichlet_report to: "$params.outdir/Reports/", mode: 'copy', overwrite: 'true'
     // plots
     SCFLOW_PLOT_REDDIM_GENES.out.reddim_gene_plots to: "$params.outdir/Plots/", mode: 'copy', overwrite: 'true'
-*/
 }
-
 /*
  * Completion e-mail notification
  */
@@ -867,7 +524,7 @@ workflow.onComplete {
     }
     def email_fields = [:]
     email_fields['version'] = workflow.manifest.version
-    email_fields['runName'] = custom_runName ?: workflow.runName
+    email_fields['runName'] = workflow.runName
     email_fields['success'] = workflow.success
     email_fields['dateComplete'] = workflow.complete
     email_fields['duration'] = workflow.duration
@@ -888,77 +545,6 @@ workflow.onComplete {
     email_fields['summary']['Nextflow Build'] = workflow.nextflow.build
     email_fields['summary']['Nextflow Compile Timestamp'] = workflow.nextflow.timestamp
 
-    // TODO nf-core: If not using MultiQC, strip out this code (including params.max_multiqc_email_size)
-    // On success try attach the multiqc report
-    def mqc_report = null
-    try {
-        if (workflow.success) {
-            mqc_report = ch_multiqc_report.getVal()
-            if (mqc_report.getClass() == ArrayList) {
-                log.warn "[nf-core/scflow] Found multiple reports from process 'multiqc', will use only one"
-                mqc_report = mqc_report[0]
-            }
-        }
-    } catch (all) {
-        log.warn "[nf-core/scflow] Could not attach MultiQC report to summary email"
-    }
-
-    // Check if we are only sending emails on failure
-    email_address = params.email
-    if (!params.email && params.email_on_fail && !workflow.success) {
-        email_address = params.email_on_fail
-    }
-
-    // Render the TXT template
-    def engine = new groovy.text.GStringTemplateEngine()
-    def tf = new File("$baseDir/assets/email_template.txt")
-    def txt_template = engine.createTemplate(tf).make(email_fields)
-    def email_txt = txt_template.toString()
-
-    // Render the HTML template
-    def hf = new File("$baseDir/assets/email_template.html")
-    def html_template = engine.createTemplate(hf).make(email_fields)
-    def email_html = html_template.toString()
-
-    // Render the sendmail template
-    def smail_fields = [ email: email_address, subject: subject, email_txt: email_txt, email_html: email_html, baseDir: "$baseDir", mqcFile: mqc_report, mqcMaxSize: params.max_multiqc_email_size.toBytes() ]
-    def sf = new File("$baseDir/assets/sendmail_template.txt")
-    def sendmail_template = engine.createTemplate(sf).make(smail_fields)
-    def sendmail_html = sendmail_template.toString()
-
-    // Send the HTML e-mail
-    if (email_address) {
-        try {
-            if (params.plaintext_email) { throw GroovyException('Send plaintext e-mail, not HTML') }
-            // Try to send HTML e-mail using sendmail
-            [ 'sendmail', '-t' ].execute() << sendmail_html
-            log.info "[nf-core/scflow] Sent summary e-mail to $email_address (sendmail)"
-        } catch (all) {
-            // Catch failures and try with plaintext
-            def mail_cmd = [ 'mail', '-s', subject, '--content-type=text/html', email_address ]
-            if ( mqc_report.size() <= params.max_multiqc_email_size.toBytes() ) {
-              mail_cmd += [ '-A', mqc_report ]
-            }
-            mail_cmd.execute() << email_html
-            log.info "[nf-core/scflow] Sent summary e-mail to $email_address (mail)"
-        }
-    }
-
-    // Write summary e-mail HTML to a file
-    def output_d = new File("${params.outdir}/pipeline_info/")
-    if (!output_d.exists()) {
-        output_d.mkdirs()
-    }
-    def output_hf = new File(output_d, "pipeline_report.html")
-    output_hf.withWriter { w -> w << email_html }
-    def output_tf = new File(output_d, "pipeline_report.txt")
-    output_tf.withWriter { w -> w << email_txt }
-
-    c_green = params.monochrome_logs ? '' : "\033[0;32m";
-    c_purple = params.monochrome_logs ? '' : "\033[0;35m";
-    c_red = params.monochrome_logs ? '' : "\033[0;31m";
-    c_reset = params.monochrome_logs ? '' : "\033[0m";
-
     if (workflow.stats.ignoredCount > 0 && workflow.success) {
         log.info "-${c_purple}Warning, pipeline completed, but with errored process(es) ${c_reset}-"
         log.info "-${c_red}Number of ignored errored process(es) : ${workflow.stats.ignoredCount} ${c_reset}-"
@@ -974,28 +560,9 @@ workflow.onComplete {
 
 }
 
-
-def nfcoreHeader() {
-    // Log colors ANSI codes
-    c_black = params.monochrome_logs ? '' : "\033[0;30m";
-    c_blue = params.monochrome_logs ? '' : "\033[0;34m";
-    c_cyan = params.monochrome_logs ? '' : "\033[0;36m";
-    c_dim = params.monochrome_logs ? '' : "\033[2m";
-    c_green = params.monochrome_logs ? '' : "\033[0;32m";
-    c_purple = params.monochrome_logs ? '' : "\033[0;35m";
-    c_reset = params.monochrome_logs ? '' : "\033[0m";
-    c_white = params.monochrome_logs ? '' : "\033[0;37m";
-    c_yellow = params.monochrome_logs ? '' : "\033[0;33m";
-
-    return """    -${c_dim}--------------------------------------------------${c_reset}-
-                                            ${c_green},--.${c_black}/${c_green},-.${c_reset}
-    ${c_blue}        ___     __   __   __   ___     ${c_green}/,-._.--~\'${c_reset}
-    ${c_blue}  |\\ | |__  __ /  ` /  \\ |__) |__         ${c_yellow}}  {${c_reset}
-    ${c_blue}  | \\| |       \\__, \\__/ |  \\ |___     ${c_green}\\`-._,-`-,${c_reset}
-                                            ${c_green}`._,._,\'${c_reset}
-    ${c_purple}  nf-core/scflow v${workflow.manifest.version}${c_reset}
-    -${c_dim}--------------------------------------------------${c_reset}-
-    """.stripIndent()
+workflow.onError {
+    // Print unexpected parameters - easiest is to just rerun validation
+    NfcoreSchema.validateParameters(params, json_schema, log)
 }
 
 def checkHostname() {
@@ -1004,15 +571,15 @@ def checkHostname() {
     def c_red = params.monochrome_logs ? '' : "\033[1;91m"
     def c_yellow_bold = params.monochrome_logs ? '' : "\033[1;93m"
     if (params.hostnames) {
-        def hostname = "hostname".execute().text.trim()
+        def hostname = 'hostname'.execute().text.trim()
         params.hostnames.each { prof, hnames ->
             hnames.each { hname ->
                 if (hostname.contains(hname) && !workflow.profile.contains(prof)) {
-                    log.error "====================================================\n" +
+                    log.error "${c_red}====================================================${c_reset}\n" +
                             "  ${c_red}WARNING!${c_reset} You are running with `-profile $workflow.profile`\n" +
                             "  but your machine hostname is ${c_white}'$hostname'${c_reset}\n" +
                             "  ${c_yellow_bold}It's highly recommended that you use `-profile $prof${c_reset}`\n" +
-                            "============================================================"
+                            "${c_red}====================================================${c_reset}\n"
                 }
             }
         }

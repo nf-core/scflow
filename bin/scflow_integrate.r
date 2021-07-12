@@ -259,10 +259,29 @@ help ="Extracts small clusters loading highly on single factor with fewer cells 
 metavar = "N"
 )
 
+required$add_argument(   
+"--reddimplot_pointsize",
+default = 0.1,
+type = "double", 
+required = TRUE,
+help = "Point size for reduced dimension plots",
+metavar = "N"
+)
 
+required$add_argument(   
+"--reddimplot_alpha",
+default = 0.2,
+type = "double", 
+required = TRUE,
+help = "Alpha value for reduced dimension plots",
+metavar = "N"
+)
 
 ### . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ..
 ### Pre-process args ####
+
+options("scflow_reddimplot_pointsize" = args$reddimplot_pointsize)
+options("scflow_reddimplot_alpha" = args$reddimplot_alpha)
 
 args <- parser$parse_args()
 args <- purrr::map(args, function(x) {
